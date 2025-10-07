@@ -1,0 +1,30 @@
+[
+  {
+    "dep_body": "399",
+    "arr_body": "20000001",
+    "start_date": "2035-06-24",
+    "end_date": "2035-06-25",
+    "dep_step": 1,
+    "min_tof": 185,
+    "max_tof": 186,
+    "tof_step": 1,
+    "out_npz": "batch1.npz",
+    "out_png": "batch1.png",
+    "cmin": 5,
+    "cmax": 50
+  },
+  {
+    "dep_body": "399",
+    "arr_body": "499",
+    "start_date": "2035-06-24",
+    "end_date": "2035-06-26",
+    "dep_step": 1,
+    "min_tof": 180,
+    "max_tof": 182,
+    "tof_step": 1,
+    "out_npz": "batch2.npz",
+    "out_png": "batch2.png",
+    "cmin": 5,
+    "cmax": 50
+  }
+]
