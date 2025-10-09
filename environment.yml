@@ -1,0 +1,48 @@
+name: lambertlab
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # Core Python
+  - python=3.13
+  
+  # Astrodynamics
+  - pykep  # ESA's astrodynamics library (Lambert solver, flyby functions)
+  - spiceypy  # JPL SPICE toolkit for ephemeris
+  
+  # Scientific Computing
+  - numpy
+  - scipy
+  - numba  # JIT compilation for performance
+  
+  # Astronomy & Time
+  - astropy
+  
+  # Data & Visualization  
+  - matplotlib
+  - pandas
+  
+  # CLI & UI
+  - click
+  - typer
+  - rich  # Beautiful terminal formatting
+  
+  # Data Processing
+  - beautifulsoup4
+  - requests
+  - pyyaml
+  
+  # Development & Testing
+  - pytest
+  - pytest-cov  # Code coverage
+  
+  # Jupyter (optional, for interactive work)
+  - jupyter
+  - ipykernel
+  
+  # Version Control
+  - pip  # For any pip-only packages if needed
+  
+# Optional pip packages (if not available in conda)
+# Install with: pip install <package>
+# - lamberthub  # Collection of Lambert solvers (if needed for comparison)
