@@ -119,20 +119,29 @@ Vector operations like `np.linalg.norm()`, `np.dot()`, `np.cross()` are fundamen
 
 All core orbital mechanics (Lambert, Kepler, Orbit) use poliastro. The custom gravity assist math is **necessary** because poliastro 0.7.0 doesn't provide these functions. The implementation is now using the **correct** spherical coordinate formula for flyby rotation.
 
-### No Further Poliastro Integration Possible Without:
-1. Upgrading to a newer poliastro version (if it has gravity assist features)
-2. Contributing gravity assist functions back to poliastro
-3. Finding a different library that provides these capabilities
+### Why We Stay on 0.7.0:
+
+**Upgrade Investigation Result:** ❌ **BLOCKED**
+
+We investigated upgrading to poliastro 0.17.0 (which has `poliastro.core.flybys.compute_flyby`), but:
+- poliastro 0.17.0 requires Python 3.8-3.10 (we use Python 3.13.7)
+- poliastro project is ARCHIVED (no longer maintained, no future updates)
+- No versions support Python 3.13
+
+**Decision:** Continue with poliastro 0.7.0 + custom flyby math (now fixed and correct).
+
+See **POLIASTRO_UPGRADE_BLOCKED.md** for full analysis.
 
 ---
 
 ## 📝 Notes for Future:
 
-If upgrading poliastro or finding alternatives, check for:
-- Gravity assist / powered swing-by functions
-- B-plane targeting utilities  
-- Patched conic trajectory optimization
-- Flyby geometry calculations
+Alternative approaches if needed:
+- Monitor for Python 3.13-compatible astrodynamics libraries
+- Consider contributing to a modern poliastro fork
+- Explore numba-accelerating our custom flyby code
 
 **Current poliastro version:** 0.7.0  
-**Last updated:** October 9, 2025
+**Python version:** 3.13.7  
+**Last updated:** October 9, 2025  
+**Status:** Using maximum poliastro capability for Python 3.13 environment
