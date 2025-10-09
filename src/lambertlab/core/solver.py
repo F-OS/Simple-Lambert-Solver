@@ -9,12 +9,14 @@ When run as a script, it prints results for an example pair.
 
 import numpy as np
 import spiceypy as sp
+import pykep as pk
 from astropy import units as u
 from astropy.time import Time
-from poliastro.bodies import Sun
-from poliastro.iod.izzo import lambert
 from typing import Tuple, Union
 from .config import DEFAULT_KERNELS
+
+# PyKEP constants
+MU_SUN_KM3S2 = 1.32712440018e11  # km^3/s^2 (Sun's gravitational parameter)
 
 
 def rv_helio_spice(target: str | int, epoch: Time):
@@ -84,26 +86,43 @@ def best_lambert_branch(r_dep, v_dep_planet, r_arr, v_arr_planet, tof, rtol=1e-1
     """
     Try all M=0 Lambert branches and return (min_C3, v_dep_best, v_arr_best, used_tuple)
     used_tuple = (M, prograde, lowpath). Returns None if no branch converged.
+    
+    NOTE: PyKEP doesn't have prograde/lowpath flags. These params are ignored.
     """
-    from poliastro.bodies import Sun
-    from poliastro.iod.izzo import lambert
     import numpy as np
-    from astropy import units as u
 
-    # poliastro's lambert doesn't accept prograde/lowpath, so just use M=0
     try:
-        # Try default lambert call first (poliastro returns a sequence of solutions)
-        solutions = list(lambert(Sun.k, r_dep * u.km, r_arr * u.km, tof, M=0))
-        if not solutions:
+        # Convert to plain arrays and seconds
+        r_dep_km = np.asarray(r_dep, dtype=float)
+        r_arr_km = np.asarray(r_arr, dtype=float)
+        tof_sec = tof.to_value(u.second)
+        
+        # PyKEP Lambert problem (0 revolutions, counter-clockwise)
+        lp = pk.lambert_problem(
+            r_dep_km.tolist(),
+            r_arr_km.tolist(),
+            tof_sec,
+            MU_SUN_KM3S2,
+            cw=False,
+            max_revs=0
+        )
+        
+        # Get number of solutions (use len() not get_Nmax())
+        n_sol = len(lp.get_v1())
+        if n_sol == 0:
             return None
 
         min_C3 = float("inf")
         best = None
         used_flags = (0, True, True)
-        for v_dep_tr, v_arr_tr in solutions:
-            # poliastro returns Quantity arrays (km/s). Convert to plain numpy km/s
-            v_dep_tr_kms = v_dep_tr.to(u.km / u.s).value
-            v_arr_tr_kms = v_arr_tr.to(u.km / u.s).value
+        
+        for i in range(n_sol):
+            v_dep_tr_kms = np.array(lp.get_v1()[i])
+            v_arr_tr_kms = np.array(lp.get_v2()[i])
+            
+            # Skip NaN solutions
+            if not np.all(np.isfinite(v_dep_tr_kms)) or not np.all(np.isfinite(v_arr_tr_kms)):
+                continue
 
             # Compute v_inf relative to planet velocity (both plain numpy arrays)
             v_inf_dep = v_dep_tr_kms - v_dep_planet
@@ -112,26 +131,13 @@ def best_lambert_branch(r_dep, v_dep_planet, r_arr, v_arr_planet, tof, rtol=1e-1
                 min_C3 = C3
                 best = (min_C3, v_dep_tr_kms, v_arr_tr_kms, used_flags)
 
-        # Guard 1: internal consistency check — if result looks NaN/Inf or inconsistent, re-enumerate
+        # Guard 1: internal consistency check
         if best is not None:
             C3_val, v_dep_best, v_arr_best, used = best
             vinf_dep = v_dep_best - v_dep_planet
             if (not np.isfinite(C3_val)) or (abs(np.linalg.norm(vinf_dep) - np.sqrt(C3_val)) > 1e-6):
-                # Re-enumerate across prograde/lowpath if requested or available
-                res = None
-                for pr in (True, False) if prograde is None else (prograde,):
-                    for lp in (True, False) if lowpath is None else (lowpath,):
-                        try:
-                            v_d, v_a = lambert(Sun.k, r_dep * u.km, r_arr * u.km, tof, M=0, prograde=pr, lowpath=lp)
-                            v_d_kms = v_d.to(u.km / u.s).value
-                            dv = v_d_kms - v_dep_planet
-                            C3_try = float(np.dot(dv, dv))
-                            if (res is None) or (C3_try < res[0]):
-                                res = (C3_try, v_d_kms, v_a.to(u.km / u.s).value, (0, pr, lp))
-                        except Exception:
-                            pass
-                if res:
-                    return res
+                # If consistency check fails, return None
+                return None
 
         return best
     except Exception:

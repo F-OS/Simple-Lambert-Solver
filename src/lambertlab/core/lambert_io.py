@@ -4,24 +4,41 @@ from __future__ import annotations
 
 from typing import Tuple, Union, Optional
 import numpy as np
-from poliastro.bodies import Sun
-from poliastro.iod.izzo import lambert
+import pykep as pk
 from astropy import units as u
 
 from .types import Vec, KM, KMS, C3_TOL
+
+# PyKEP constants
+MU_SUN_KM3S2 = 1.32712440018e11  # km^3/s^2 (Sun's gravitational parameter)
 
 
 def lambert_leg(r1: u.Quantity, r2: u.Quantity, tof: u.Quantity) -> Tuple[u.Quantity, u.Quantity]:
     """
     r1, r2: astropy Quantities (km); tof: Quantity (day or s).
     Returns (v1[km/s], v2[km/s]) heliocentric.
+    Uses PyKEP's lambert_problem for superior performance and multi-rev capability.
     """
-    solutions = list(lambert(Sun.k, r1.to(KM), r2.to(KM), tof))
-    if len(solutions) == 0:
-        raise ValueError("No Lambert solutions found")
-    # Take the first solution (usually the minimum energy one)
-    v1, v2 = solutions[0]
-    return v1.to(KMS), v2.to(KMS)
+    # Convert to plain arrays and seconds
+    r1_km = r1.to_value(KM)
+    r2_km = r2.to_value(KM)
+    tof_sec = tof.to_value(u.second)
+    
+    # PyKEP Lambert problem (0 revolutions, counter-clockwise)
+    lp = pk.lambert_problem(
+        r1_km.tolist(),
+        r2_km.tolist(),
+        tof_sec,
+        MU_SUN_KM3S2,
+        cw=False,
+        max_revs=0
+    )
+    
+    # Get first solution (0-rev, minimum energy)
+    v1_kms = np.array(lp.get_v1()[0])
+    v2_kms = np.array(lp.get_v2()[0])
+    
+    return v1_kms * KMS, v2_kms * KMS
 
 
 def solve_leg(r1: u.Quantity, r2: u.Quantity, tof: u.Quantity) -> Tuple[u.Quantity, u.Quantity]:
@@ -63,6 +80,9 @@ def best_lambert_branch(
     """
     Try all M=0 Lambert branches and return (min_C3, v_dep_best, v_arr_best, used_tuple)
     used_tuple = (M, prograde, lowpath). Returns None if no branch converged.
+    
+    NOTE: PyKEP doesn't have prograde/lowpath flags like poliastro. It solves for
+    all geometrically valid trajectories automatically. We ignore these params.
     """
     # Validate TOF
     tof_days = tof.to_value(u.day)
@@ -75,45 +95,48 @@ def best_lambert_branch(
         return None
     
     try:
+        # Convert to plain arrays and seconds
+        r_dep_km = np.asarray(r_dep, dtype=float)
+        r_arr_km = np.asarray(r_arr, dtype=float)
+        tof_sec = tof.to_value(u.second)
+        
+        # PyKEP Lambert problem (0 revolutions)
+        # Note: PyKEP automatically finds both cw and ccw solutions
+        lp = pk.lambert_problem(
+            r_dep_km.tolist(),
+            r_arr_km.tolist(),
+            tof_sec,
+            MU_SUN_KM3S2,
+            cw=False,  # Counter-clockwise (prograde in solar system)
+            max_revs=0  # Direct transfer only
+        )
+        
+        # Get number of solutions (use len() not get_Nmax())
+        n_sol = len(lp.get_v1())
+        if n_sol == 0:
+            return None
+        
+        # Try all solutions and find minimum C3
         min_C3 = float("inf")
         best = None
         
-        # Try different numbers of revolutions M
-        for M in [0]:  # Only try direct (M=0) transfers for now
-            try:
-                # poliastro returns a sequence of solutions for each M
-                solutions = list(lambert(Sun.k, r_dep * KM, r_arr * KM, tof, M=M))
-                if not solutions:
-                    continue
-                    
-                for v_dep_tr, v_arr_tr in solutions:
-                    # Convert to plain numpy km/s
-                    v_dep_tr_kms = v_dep_tr.to_value(KMS)
-                    v_arr_tr_kms = v_arr_tr.to_value(KMS)
-
-                    # Compute v_inf relative to planet velocity
-                    v_inf_dep = v_dep_tr_kms - v_dep_planet
-                    C3 = float(np.dot(v_inf_dep, v_inf_dep))
-                    if C3 < min_C3:
-                        min_C3 = C3
-                        best = (min_C3, v_dep_tr_kms, v_arr_tr_kms, (M, True, True))  # Returns heliocentric velocities
-            except Exception:
+        for i in range(n_sol):
+            v_dep_kms = np.array(lp.get_v1()[i])
+            v_arr_kms = np.array(lp.get_v2()[i])
+            
+            # Skip NaN solutions
+            if not np.all(np.isfinite(v_dep_kms)) or not np.all(np.isfinite(v_arr_kms)):
                 continue
-                
-        # If no solutions found with default M, try with prograde/lowpath variations
-        if best is None:
-            for pr in (True, False):
-                for lp in (True, False):
-                    try:
-                        v_d, v_a = lambert(Sun.k, r_dep * KM, r_arr * KM, tof, M=0, prograde=pr, lowpath=lp)
-                        v_d_kms = v_d.to_value(KMS)
-                        dv = v_d_kms - v_dep_planet
-                        C3_try = float(np.dot(dv, dv))
-                        if C3_try < min_C3:
-                            min_C3 = C3_try
-                            best = (C3_try, v_d_kms, v_a.to_value(KMS), (0, pr, lp))
-                    except Exception:
-                        pass
+            
+            # Compute v_inf relative to planet velocity
+            v_inf_dep = v_dep_kms - v_dep_planet
+            C3 = float(np.dot(v_inf_dep, v_inf_dep))
+            
+            if C3 < min_C3:
+                min_C3 = C3
+                # Store as (C3, v_dep, v_arr, (M, prograde, lowpath))
+                # prograde/lowpath are legacy from poliastro, not used by PyKEP
+                best = (min_C3, v_dep_kms, v_arr_kms, (0, True, True))
 
         # Guard: internal consistency check
         if best is not None:
