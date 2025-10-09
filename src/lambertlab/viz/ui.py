@@ -7,6 +7,7 @@ import json
 import os
 import hashlib
 import numpy as np
+import pykep as pk
 from astropy import units as u
 from astropy.time import Time
 from pathlib import Path
@@ -836,29 +837,27 @@ def run_chain3_original(args):
                 delta = 2.0 * np.arcsin(sin_half_delta)
                 
                 for theta in theta_grid:
-                    # Compute outgoing v-infinity using spherical coordinates
-                    # This is the correct gravity assist formula (same as in flyby.py)
-                    vinf_in_unit = vinf_in_vec / vinf_in_mag
+                    # Use PyKEP's fb_prop() for gravity assist rotation
+                    # PyKEP fb_prop(v_spacecraft, v_planet, rp, beta, mu)
+                    v_sc_in = v_flyby + vinf_in_vec  # Heliocentric spacecraft velocity before flyby
                     
-                    # Build orthonormal basis around vinf_in
-                    # e1 is along incoming v_inf, e2 and e3 are perpendicular
-                    e1 = vinf_in_unit
-                    tmp = np.array([0, 0, 1]) - np.dot([0, 0, 1], e1) * e1
-                    if np.linalg.norm(tmp) < 0.1:
-                        tmp = np.array([0, 1, 0]) - np.dot([0, 1, 0], e1) * e1
-                    e2 = tmp / np.linalg.norm(tmp)
-                    e3 = np.cross(e1, e2)
+                    try:
+                        # PyKEP returns post-flyby heliocentric velocity
+                        v_sc_post = np.array(pk.fb_prop(
+                            v_sc_in.tolist(),
+                            v_flyby.tolist(),  # Planet velocity
+                            rp,
+                            theta,  # B-plane angle (beta)
+                            mu_flyby
+                        ))
+                    except Exception:
+                        # PyKEP may throw for invalid geometry
+                        continue
                     
-                    # Outgoing v_inf in spherical coordinates:
-                    # polar angle = delta (turn angle)
-                    # azimuthal angle = theta (rotation around incoming direction)
-                    vinf_out_vec = vinf_in_mag * (np.cos(delta) * e1 + 
-                                                 np.sin(delta) * (np.cos(theta) * e2 + np.sin(theta) * e3))
-                    
+                    vinf_out_vec = v_sc_post - v_flyby
                     vinf_out_mag = np.linalg.norm(vinf_out_vec)
                     
-                    # Convert to heliocentric post-flyby velocity
-                    v_sc_post = v_flyby + vinf_out_vec
+                    # v_sc_post is already heliocentric from fb_prop (no conversion needed)
                     
                     # Save B-plane data
                     bplane_data.append({

@@ -1,6 +1,7 @@
 """Flyby computations."""
 
 import numpy as np
+import pykep as pk
 from astropy.time import Time
 import astropy.units as u
 from ..core.spice_io import rv_helio
@@ -66,15 +67,15 @@ def compute_flyby(epoch, r_planet, v_planet, mu_planet, vinf_in, rp_bounds, targ
     rp_grid = np.linspace(rp_min, rp_max, n_rp)
     phi_grid = np.linspace(0.0, 2*np.pi, n_phi, endpoint=False)
 
-    # Orthonormal basis around vinf_minus
-    e1 = vinf_minus / v_inf_mag
-    # pick an arbitrary vector not parallel to e1
-    tmp = np.array([0.0, 0.0, 1.0])
-    if abs(np.dot(tmp, e1)) > 0.9:
-        tmp = np.array([0.0, 1.0, 0.0])
-    e2 = tmp - np.dot(tmp, e1) * e1
-    e2 /= np.linalg.norm(e2)
-    e3 = np.cross(e1, e2)
+    # We don't need to build an orthonormal basis anymore - PyKEP handles rotation!
+    # (Keeping commented out for reference during migration)
+    # e1 = vinf_minus / v_inf_mag
+    # tmp = np.array([0.0, 0.0, 1.0])
+    # if abs(np.dot(tmp, e1)) > 0.9:
+    #     tmp = np.array([0.0, 1.0, 0.0])
+    # e2 = tmp - np.dot(tmp, e1) * e1
+    # e2 /= np.linalg.norm(e2)
+    # e3 = np.cross(e1, e2)
 
     best = None
     # sample arrival epochs in window
@@ -96,12 +97,29 @@ def compute_flyby(epoch, r_planet, v_planet, mu_planet, vinf_in, rp_bounds, targ
         if max_turn is not None and delta > max_turn:
             continue
 
-        # For each orientation around the incoming direction, compute outgoing v_inf in planet frame
+        # For each orientation around the incoming direction, use PyKEP's fb_prop()
         for phi in phi_grid:
-            # outgoing in local spherical coords: polar angle = delta, azimuth = phi
-            vinf_out_planet = v_inf_mag * (np.cos(delta) * e1 + np.sin(delta) * (np.cos(phi) * e2 + np.sin(phi) * e3))
-            # convert back to heliocentric
-            vinf_out_helio = vinf_out_planet + v_planet
+            # PyKEP fb_prop(v_spacecraft, v_planet, rp, beta, mu) 
+            # where beta is the B-plane angle (equivalent to our phi)
+            # Convert to heliocentric spacecraft velocity for PyKEP
+            v_sc_in = v_planet + vinf_minus
+            
+            try:
+                # PyKEP fb_prop returns post-flyby heliocentric velocity
+                v_after = np.array(pk.fb_prop(
+                    v_sc_in.tolist(),
+                    v_planet.tolist(),
+                    rp,
+                    phi,  # beta (B-plane angle)
+                    mu_planet
+                ))
+            except Exception:
+                # PyKEP may throw if geometry is invalid
+                continue
+            
+            # Extract post-flyby v_inf (planetocentric)
+            vinf_out_planet = v_after - v_planet
+            vinf_out_helio = v_after  # Already heliocentric from fb_prop()
 
             # post-flyby heliocentric state (position unchanged at encounter)
             r_after = r_planet.copy()
@@ -159,6 +177,14 @@ def compute_flyby(epoch, r_planet, v_planet, mu_planet, vinf_in, rp_bounds, targ
         return FlyResult(False, "No feasible flyby+Lambert found", flyby_model="patchedconic")
 
     # Build a b-plane vector estimate (use impact parameter b = mu/ v_inf^2 * cot(delta/2))
+    # We need a basis vector perpendicular to vinf_minus for b_vec direction
+    e1 = vinf_minus / v_inf_mag
+    tmp = np.array([0.0, 0.0, 1.0])
+    if abs(np.dot(tmp, e1)) > 0.9:
+        tmp = np.array([0.0, 1.0, 0.0])
+    e2 = tmp - np.dot(tmp, e1) * e1
+    e2 /= np.linalg.norm(e2)
+    
     cot_half = 1.0 / np.tan(0.5 * best['turn_angle']) if np.tan(0.5 * best['turn_angle']) != 0 else 0.0
     b_mag = mu_planet / (v_inf_mag**2) * cot_half
     # choose b_vec aligned with e2 for now
