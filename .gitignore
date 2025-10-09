@@ -2,8 +2,18 @@
 results/
 lambertlab/results/
 
+# Ignore artifacts and test outputs
+artifacts/
+test_artifacts/
+outputs/
+*.npz
+*.png
+*.csv
+
 # Ignore data directories
 lambertlab/data/
+data/kernels/*.bsp
+data/kernels/*.tpc
 
 # Python cache files
 __pycache__/
@@ -13,8 +23,14 @@ __pycache__/
 
 # Virtual environment
 venv/
+.venv/
 env/
 .env
+
+# Build directories
+build/
+dist/
+*.egg-info/
 
 # IDE files
 .vscode/
