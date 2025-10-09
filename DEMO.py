@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""
+Demonstration of the new flexible body input system
+
+This script shows examples of what the interactive runner can now do.
+"""
+
+print("=" * 70)
+print("LambertLab Interactive Runner - New Features Demo")
+print("=" * 70)
+print()
+
+print("1. FLEXIBLE BODY INPUT")
+print("-" * 70)
+print("You can now enter bodies using:")
+print("  • NAIF IDs: 399 (Earth), 499 (Mars), 20000001 (Ceres)")
+print("  • Names: EARTH, MARS, VENUS, MERCURY")
+print()
+
+print("2. UPDATED MENU OPTIONS")
+print("-" * 70)
+print("Old Menu:                      New Menu:")
+print("1. Earth-Mars Grid         →   1. Two Body Grid")
+print("2. Mars Flyby              →   2. Compute Flyby")
+print("3. Mars-Ceres Screening    →   3. Two Body Screening")
+print("4. Earth-Mars-Ceres Chain  →   4. Three Body Chain (Gravity Assist)")
+print()
+
+print("3. AUTOMATIC EPHEMERIS VALIDATION")
+print("-" * 70)
+print("Before running, the tool checks:")
+print("  ✓ Body exists in SPICE")
+print("  ✓ Ephemeris data available for your dates")
+print("  ✓ Clear error messages if validation fails")
+print()
+
+print("4. EXAMPLE MISSIONS YOU CAN NOW SIMULATE")
+print("-" * 70)
+print("Earth to Mars:         python run.py  (then select bodies)")
+print("Earth to Venus:        Dep: 399, Arr: 299")
+print("Earth to Ceres:        Dep: EARTH, Arr: 20000001")
+print("Venus to Mars:         Dep: VENUS, Arr: MARS")
+print("Mars to Jupiter:       Dep: 499, Arr: 5")
+print()
+
+print("5. HOW TO USE")
+print("-" * 70)
+print("Step 1: Run the interactive tool")
+print("  $ python run.py")
+print()
+print("Step 2: Select '1' for Two Body Grid")
+print()
+print("Step 3: Enter your dates")
+print("  Departure start date: 2026-06-24")
+print("  Departure end date: 2026-06-28")
+print()
+print("Step 4: Enter departure body")
+print("  Enter NAIF ID or name [399 (Earth)]: EARTH")
+print("  ✓ Valid: EARTH (NAIF ID: 399)")
+print()
+print("Step 5: Enter arrival body")
+print("  Enter NAIF ID or name [499 (Mars)]: 20000001")
+print("  ✓ Valid: Body 20000001 (NAIF ID: 20000001)")
+print()
+print("Step 6: Confirm parameters and run!")
+print()
+
+print("=" * 70)
+print("For more information, see:")
+print("  • INTERACTIVE_GUIDE.md - Detailed user guide")
+print("  • CHANGES_SUMMARY.md   - Technical changes")
+print("=" * 70)

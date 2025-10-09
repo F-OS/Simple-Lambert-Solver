@@ -1,0 +1,14 @@
+numpy
+scipy
+matplotlib
+astropy
+spiceypy
+typer
+rich
+
+[dev]
+pytest
+pytest-cov
+black
+isort
+flake8
