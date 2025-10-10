@@ -7,6 +7,9 @@ example style.
 from typing import Sequence
 
 import numpy as np
+# Force matplotlib to use non-interactive backend for subprocess compatibility
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from astropy import units as u
 from astropy.time import Time

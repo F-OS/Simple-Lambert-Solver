@@ -174,12 +174,30 @@ def run_command(cmd_args):
     env['PYTHONPATH'] = f"{src_path}{os.pathsep}{pythonpath}" if pythonpath else src_path
     # Prevent bytecode generation which can cause import warnings
     env['PYTHONDONTWRITEBYTECODE'] = '1'
+    # Force matplotlib to use Agg backend (non-interactive) before Python starts
+    env['MPLBACKEND'] = 'Agg'
 
+    # Ensure we use the lambertlab environment Python, not base
     python_exe = sys.executable
+    # If running from base, switch to lambertlab environment
+    if 'envs\\lambertlab' not in python_exe and 'envs/lambertlab' not in python_exe:
+        # Try to find lambertlab environment Python
+        miniconda_root = os.path.dirname(os.path.dirname(sys.executable)) if 'miniconda3' in sys.executable else None
+        if miniconda_root:
+            lambertlab_python = os.path.join(miniconda_root, 'envs', 'lambertlab', 'python.exe')
+            if os.path.exists(lambertlab_python):
+                python_exe = lambertlab_python
+                print(f"⚠️  Switched from base to lambertlab environment")
+    
     cmd = [python_exe, '-W', 'ignore', '-m', 'lambertlab.cli.main'] + cmd_args
 
+    print(f"Running command: {' '.join(cmd)}")
+    print(f"Using Python: {python_exe}")
+    print(f"MPLBACKEND env var: {env.get('MPLBACKEND', 'NOT SET')}")
+    print(f"Current working directory: {os.getcwd()}")
+    
     try:
-        result = subprocess.run(cmd, env=env)
+        result = subprocess.run(cmd, env=env, cwd=os.getcwd())
         return result.returncode
     except KeyboardInterrupt:
         print("\nInterrupted by user")

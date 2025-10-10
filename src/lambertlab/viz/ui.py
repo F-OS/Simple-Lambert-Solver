@@ -270,7 +270,14 @@ def run_em_grid(args):
         
         # Generate and save porkchop plot
         png_path = os.path.join(args.outdir, 'porkchop.png')
-        plot_c3(dep_times, tof_days, c3_grid, png_path)
+        print(f"Generating porkchop plot: {png_path}")
+        try:
+            plot_c3(dep_times, tof_days, c3_grid, png_path)
+            print(f"Plot saved as {png_path}")
+        except Exception as e:
+            print(f"ERROR generating plot: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 def run_flyby(args):

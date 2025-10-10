@@ -14,6 +14,7 @@ from astropy import units as u
 from astropy.time import Time
 from typing import Tuple, Union
 from .config import DEFAULT_KERNELS
+from .spice_io import load_kernels
 
 # PyKEP constants
 MU_SUN_KM3S2 = 1.32712440018e11  # km^3/s^2 (Sun's gravitational parameter)
@@ -48,6 +49,9 @@ def compute_c3_tof(dep_time: Union[str, Time], arr_time: Union[str, Time],
     Compute (tof_days, C3) for a single departure/arrival pair.
     Picks the minimum-C3 solution among all M=0 Lambert branches.
     """
+    # Ensure SPICE kernels are loaded
+    if sp.ktotal("ALL") == 0:
+        load_kernels()
     dep_t = _to_time(dep_time)
     arr_t = _to_time(arr_time)
 

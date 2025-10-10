@@ -1,11 +1,14 @@
-# Ignore results directories
-results/
-lambertlab/results/
-
-# Ignore artifacts and test outputs
+# Output directories (all simulation outputs go to artifacts/)
 artifacts/
 test_artifacts/
 outputs/
+
+# Archived old results (pre-cleanup)
+results/
+results_archive*/
+lambertlab/results/
+
+# Output files
 *.npz
 *.png
 *.csv

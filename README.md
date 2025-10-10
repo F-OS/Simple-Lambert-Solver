@@ -13,15 +13,56 @@ A comprehensive tool for Lambert solver calculations with SPICE integration for 
 
 ## Installation
 
+### Prerequisites
+- Python 3.8+
+- Conda (required for PyKEP)
+
+### Setup
+
+1. **Create and activate the lambertlab conda environment:**
+   ```bash
+   conda create -n lambertlab python=3.13
+   conda activate lambertlab
+   ```
+
+2. **Install PyKEP (conda only - not available on PyPI):**
+   ```bash
+   conda install -c conda-forge pykep
+   ```
+
+3. **Install the package:**
+   ```bash
+   pip install -e .
+   ```
+
+### Important: Environment Activation
+**Always activate the `lambertlab` conda environment before running any commands:**
 ```bash
-pip install -e .
+conda activate lambertlab
+python run.py         # For interactive menu
+# OR
+python -m lambertlab.cli.main em-grid [options]  # For command-line
 ```
+
+If you see `ModuleNotFoundError: No module named 'lambertlab'` or missing porkchop plots, you're likely in the wrong environment!
 
 ## Usage
 
+### Quick Start: Earth-Mars Transfer (2035-2037 Window)
+The **2035-2037** transfer window offers excellent Earth-Mars geometry with C3 values as low as 10.34 km²/s²:
+
+```bash
+conda activate lambertlab
+python run.py
+# Select option 1 (Two Body Grid)
+# Use defaults: 2035-04-01 to 2035-09-01, TOF 200-600 days
+```
+
+### Command-Line Examples
+
 ```bash
 # Generate Earth-Mars porkchop plot
-lambertlab em-grid --kernels data/kernels/*.bsp --dep-start 2025-01-01 --dep-end 2025-02-01 --tof-min 100 --tof-max 300
+lambertlab em-grid --kernels data/kernels/*.bsp --dep-start 2035-01-01 --dep-end 2038-01-01 --tof-min 200 --tof-max 600
 
 # Optimize flyby trajectory
 lambertlab flyby --kernels data/kernels/*.bsp --epoch 2025-06-01 --vinf-in 5.0 0.0 0.0

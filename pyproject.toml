@@ -27,6 +27,7 @@ dependencies = [
     "matplotlib",
     "astropy",
     "spiceypy",
+    # "pykep",  # Installed via conda
     "typer",
     "rich",
 ]
@@ -48,3 +49,12 @@ where = ["src"]
 
 [tool.setuptools.package-dir]
 "" = "src"
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

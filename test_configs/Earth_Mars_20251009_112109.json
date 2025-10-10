@@ -1,0 +1,16 @@
+{
+  "simulation_type": "two_body_grid",
+  "timestamp": "20251009_112109",
+  "parameters": {
+    "dep_start": "2035-01-01",
+    "dep_end": "2037-01-01",
+    "dep_step": "10",
+    "tof_min": "100",
+    "tof_max": "600",
+    "tof_step": "10",
+    "dep_id": "399",
+    "arr_id": "499",
+    "dep_body_name": "Earth",
+    "arr_body_name": "Mars"
+  }
+}
