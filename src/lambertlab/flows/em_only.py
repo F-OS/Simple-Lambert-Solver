@@ -8,6 +8,7 @@ from astropy.time import Time
 from astropy import units as u
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import logging
 
 from ..core.spice_io import load_kernels, rv_helio_spice, _to_time, StateCache, ensure_spice_loaded, _pool_initializer
 from ..core.lambert_io import best_lambert_branch, c3
@@ -39,7 +40,8 @@ def _compute_grid_chunk(dep_times: List[Time], tof_days: np.ndarray,
 
     if use_mp:
         # Parallel computation
-        print(f"Computing grid using {n_workers} workers...")
+        logger = logging.getLogger(__name__)
+        logger.info('Computing grid using %d workers...', n_workers)
         
         # Create shared cache (this is tricky with multiprocessing, so we'll create per-worker caches)
         # For now, each worker will create its own cache
@@ -85,7 +87,8 @@ def _compute_grid_chunk(dep_times: List[Time], tof_days: np.ndarray,
                             rM_y[i, j] = r_arr[1]
                             rM_z[i, j] = r_arr[2]
                 except Exception as e:
-                    print(f"Error processing departure time {dep_times[i].isot}: {e}")
+                    logger = logging.getLogger(__name__)
+                    logger.exception('Error processing departure time %s: %s', dep_times[i].isot, e)
     else:
         # Serial computation with shared cache
         cache = StateCache()
@@ -98,8 +101,9 @@ def _compute_grid_chunk(dep_times: List[Time], tof_days: np.ndarray,
             for tof in tof_days:
                 arr = Time(dep.jd + tof, format='jd', scale='tdb')
                 cache.get(arr_body, arr)
-        
-        print(f"Prefetched {cache.size()} state vectors")
+
+        logger = logging.getLogger(__name__)
+        logger.info('Prefetched %d state vectors', cache.size())
 
         for i, dep in enumerate(dep_times):
             for j, tof in enumerate(tof_days):
@@ -381,36 +385,37 @@ def screen_em_grid_cached(
         # Run coarse grid first
         coarse_dep_step = max(1, dep_step_days * coarse_factor)
         coarse_tof_step = max(1, coarse_factor)
-        
+
         coarse_dep_times = Time(
             np.arange(dep_start_t.jd, dep_end_t.jd + 1e-9, coarse_dep_step),
             format='jd',
             scale='tdb'
         )
         coarse_tof_days = np.arange(tof_min_days, tof_max_days + 1, coarse_tof_step)
-        
-        print(f"Running coarse grid: {len(coarse_dep_times)}x{len(coarse_tof_days)} = {len(coarse_dep_times) * len(coarse_tof_days)} points")
-        
+
+        logger = logging.getLogger(__name__)
+        logger.info('Running coarse grid: %dx%d = %d points', len(coarse_dep_times), len(coarse_tof_days), len(coarse_dep_times) * len(coarse_tof_days))
+
         # Compute coarse grid
         coarse_results = _compute_grid_chunk(
             coarse_dep_times, coarse_tof_days, dep_body, arr_body, use_mp, actual_workers, kernel_paths, use_threads
         )
-        
+
         # Find promising regions (C3 < some threshold)
         c3_threshold = np.nanpercentile(coarse_results['c3_grid'], 25)  # Bottom 25% of C3 values
         promising_mask = coarse_results['c3_grid'] < c3_threshold
-        
+
         if not np.any(promising_mask):
-            print("No promising regions found in coarse grid, using all points")
+            logger.info('No promising regions found in coarse grid, using all points')
             promising_mask = np.ones_like(coarse_results['c3_grid'], dtype=bool)
-        
+
         # Create refined grid around promising points
         dep_times, tof_days = _create_refined_grid(
-            coarse_dep_times, coarse_tof_days, promising_mask, 
+            coarse_dep_times, coarse_tof_days, promising_mask,
             dep_step_days, base_tof_days, dep_start_t, dep_end_t
         )
-        
-        print(f"Refined to {len(dep_times)}x{len(tof_days)} = {len(dep_times) * len(tof_days)} points")
+
+        logger.info('Refined to %dx%d = %d points', len(dep_times), len(tof_days), len(dep_times) * len(tof_days))
     else:
         dep_times = base_dep_times
         tof_days = base_tof_days
@@ -460,7 +465,8 @@ def eval_em_point(t_dep, t_mars) -> dict:
             'mars_iso': t_mars.isot
         }
     except ValueError as e:
-        print(f"Validation error for {t_dep.isot} -> {t_mars.isot}: {e}")
+        logger = logging.getLogger(__name__)
+        logger.warning('Validation error for %s -> %s: %s', t_dep.isot, t_mars.isot, e)
         return {
             'C3_earth': np.nan,
             'tof1_d': np.nan,
@@ -469,7 +475,8 @@ def eval_em_point(t_dep, t_mars) -> dict:
             'mars_iso': t_mars.isot
         }
     except RuntimeError as e:
-        print(f"Computation error for {t_dep.isot} -> {t_mars.isot}: {e}")
+        logger = logging.getLogger(__name__)
+        logger.exception('Computation error for %s -> %s: %s', t_dep.isot, t_mars.isot, e)
         return {
             'C3_earth': np.nan,
             'tof1_d': np.nan,
@@ -478,7 +485,8 @@ def eval_em_point(t_dep, t_mars) -> dict:
             'mars_iso': t_mars.isot
         }
     except Exception as e:
-        print(f"Unexpected error for {t_dep.isot} -> {t_mars.isot}: {e}")
+        logger = logging.getLogger(__name__)
+        logger.exception('Unexpected error for %s -> %s: %s', t_dep.isot, t_mars.isot, e)
         return {
             'C3_earth': np.nan,
             'tof1_d': np.nan,

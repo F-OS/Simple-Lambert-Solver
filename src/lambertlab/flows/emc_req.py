@@ -8,6 +8,7 @@ from astropy import units as u
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import List
+import logging
 
 from ..core.spice_io import rv_helio_spice, _to_time
 from ..core.lambert_io import best_lambert_branch
@@ -91,7 +92,8 @@ def eval_mc_requirements_batch(mars_times: List[Time], ceres_times: List[Time],
                 result = future.result()
                 results.append(result)
             except Exception as e:
-                print(f"Failed for Mars {mars_t.isot}, Ceres {ceres_t.isot}: {e}")
+                logger = logging.getLogger(__name__)
+                logger.exception('Failed for Mars %s, Ceres %s: %s', mars_t.isot, ceres_t.isot, e)
                 # Add failed result with NaN values
                 results.append({
                     'vinf_req_x': np.nan, 'vinf_req_y': np.nan, 'vinf_req_z': np.nan,

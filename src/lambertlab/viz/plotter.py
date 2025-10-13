@@ -13,6 +13,9 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from astropy import units as u
 from astropy.time import Time
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.ndarray,
@@ -160,4 +163,4 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
     plt.tight_layout()
     fig.savefig(outname, dpi=200)
     plt.close(fig)
-    print(f'Plot saved as {outname}')
+    logger.info('Plot saved as %s', outname)

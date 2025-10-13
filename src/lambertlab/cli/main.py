@@ -2,10 +2,14 @@
 # Set matplotlib backend before any imports to ensure it works in subprocess/headless mode
 import sys
 import os
-print(f"DEBUG main.py: MPLBACKEND env var = {os.environ.get('MPLBACKEND', 'NOT SET')}", file=sys.stderr, flush=True)
+import logging
+import matplotlib
+logger = logging.getLogger(__name__)
+logger.debug("MPLBACKEND env var = %s", os.environ.get('MPLBACKEND', 'NOT SET'))
 import matplotlib
 matplotlib.use('Agg', force=True)
-print(f"DEBUG main.py: Set matplotlib backend to: {matplotlib.get_backend()}", file=sys.stderr, flush=True)
+logger.debug("Set matplotlib backend to: %s", matplotlib.get_backend())
+logging.basicConfig(level=logging.DEBUG)
 
 import argparse
 from ..viz.ui import run_em_grid, run_flyby, run_mc_screen, run_emc_chain, run_chain3

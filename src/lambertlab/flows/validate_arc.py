@@ -6,6 +6,7 @@ import numpy as np
 from astropy.time import Time
 from astropy import units as units
 import spiceypy as spice
+import logging
 
 try:
     from poliastro.twobody import Orbit
@@ -167,8 +168,9 @@ def validate_emc_candidates(em_csv: str = 'em_porkchop.csv', mc_csv: str = 'mc_r
             for mc_row in mc_data[mars_iso]:
                 candidates.append((em_row, mc_row))
 
-    print(f"Validating {min(n_candidates, len(candidates))} EMC candidates:")
-    print("=" * 80)
+    logger = logging.getLogger(__name__)
+    logger.info('Validating %d EMC candidates', min(n_candidates, len(candidates)))
+    logger.info('%s', '=' * 80)
 
     for i, (em_row, mc_row) in enumerate(candidates[:n_candidates]):
         result = validate_trajectory(em_row, mc_row)
@@ -177,12 +179,12 @@ def validate_emc_candidates(em_csv: str = 'em_porkchop.csv', mc_csv: str = 'mc_r
         mars_iso = em_row['mars_iso']
         ceres_iso = mc_row['ceres_iso']
 
-        print(f"\nCandidate {i+1}: {dep_iso} -> {mars_iso} -> {ceres_iso}")
+        logger.info('\nCandidate %d: %s -> %s -> %s', i+1, dep_iso, mars_iso, ceres_iso)
         if result['propagation_ok']:
-            print(".1f")
-            print(".1f")
+            logger.info('Propagation OK: min_distance_km=%.1f arrival_distance_km=%.1f',
+                        result['min_distance_km'], result['arrival_distance_km'])
         else:
-            print(f"  Propagation failed: {result['error_msg']}")
+            logger.warning('Propagation failed: %s', result['error_msg'])
 
 
 if __name__ == '__main__':

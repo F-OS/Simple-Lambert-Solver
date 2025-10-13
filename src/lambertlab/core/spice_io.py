@@ -8,6 +8,7 @@ import numpy as np
 import spiceypy as sp
 from astropy.time import Time
 from astropy import units as u
+import logging
 
 from .types import Vec, State, TimeLike, KM, KMS, FRAME, CENTER, SUN_ID
 from .config import DEFAULT_KERNELS
@@ -72,10 +73,11 @@ def load_kernels(paths: list[str] | None = None) -> None:
         if not kernel.exists():
             raise FileNotFoundError(f"Kernel file not found: {kernel}")
         
-        print(f"Loading kernel: {kernel}")
+        logger = logging.getLogger(__name__)
+        logger.info('Loading kernel: %s', kernel)
         try:
             sp.furnsh(kernel.as_posix())
-            print(f"Successfully loaded {kernel}")
+            logger.info('Successfully loaded %s', kernel)
         except Exception as e:
             raise RuntimeError(f"Error loading kernel {kernel}: {e}")
     

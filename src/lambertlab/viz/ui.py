@@ -11,6 +11,9 @@ import pykep as pk
 from astropy import units as u
 from astropy.time import Time
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 from ..core.spice_io import load_kernels, rv_helio_spice
 from ..flows.em_only import screen_em_grid_cached
@@ -23,24 +26,25 @@ from ..viz.porkchop import plot_c3
 def progress_bar(current, total, phase):
     percent = int(100 * current / total)
     bar = '#' * (percent // 2) + '.' * (50 - percent // 2)
-    print(f'\r{phase} {percent}% [{bar}] {current}/{total}', end='', flush=True)
+    # Log progress as info; keep a newline when complete
+    logger.info('%s %d%% [%s] %d/%d', phase, percent, bar, current, total)
     if current == total:
-        print()
+        logger.info('')
 
 
 def print_kernel_status(kernels):
     """Print kernel list and confirm LSK presence."""
-    print("Loaded kernels:")
+    logger.info('Loaded kernels:')
     for k in kernels:
-        print(f"  {k}")
+        logger.info('  %s', k)
     
     # Check for LSK
     has_lsk = any('tls' in k.lower() for k in kernels)
     if not has_lsk:
-        print("ERROR: No leapseconds kernel (.tls) found!", file=sys.stderr)
-        print("Please include naif0012.tls or similar LSK kernel.", file=sys.stderr)
+        logger.error('No leapseconds kernel (.tls) found!')
+        logger.error('Please include naif0012.tls or similar LSK kernel.')
         sys.exit(2)
-    print("LSK kernel confirmed")
+    logger.info('LSK kernel confirmed')
 
 
 def compute_array_hash(arr, name):
@@ -49,7 +53,7 @@ def compute_array_hash(arr, name):
         # Flatten and convert to bytes
         data = arr.flatten().tobytes()
         hash_val = hashlib.sha256(data).hexdigest()[:16]  # Short hash
-        print(f"Hash({name}): {hash_val}")
+        logger.debug('Hash(%s): %s', name, hash_val)
         return hash_val
     return None
 
@@ -61,11 +65,11 @@ def check_mock_usage(args):
     
     if using_mock:
         if not allow_mock:
-            print("=" * 60, file=sys.stderr)
-            print("WARNING: Using mock flyby model!", file=sys.stderr)
-            print("This produces physics-incomplete results.", file=sys.stderr)
-            print("Add --allow-mock to suppress this warning.", file=sys.stderr)
-            print("=" * 60, file=sys.stderr)
+            logger.warning('%s', '=' * 60)
+            logger.warning('WARNING: Using mock flyby model!')
+            logger.warning('This produces physics-incomplete results.')
+            logger.warning('Add --allow-mock to suppress this warning.')
+            logger.warning('%s', '=' * 60)
             return True  # Indicates physics-incomplete
     return False
 
@@ -73,7 +77,7 @@ def check_mock_usage(args):
 def echo_time_scale_conversion(input_time, input_scale, output_time):
     """Echo time scale conversion in header."""
     if input_scale.upper() != 'TDB':
-        print(f"Time scale: {input_time} ({input_scale}) → {output_time.tdb.isot} (TDB)")
+        logger.info('Time scale: %s (%s) → %s (TDB)', input_time, input_scale, output_time.tdb.isot)
 
 
 def validate_kernels(args):
@@ -82,7 +86,8 @@ def validate_kernels(args):
     try:
         spice.et2utc(0, 'C', 0)
     except:
-        print("Load a leapseconds kernel (e.g., naif0012.tls)", file=sys.stderr)
+        logger = logging.getLogger(__name__)
+        logger.error('Load a leapseconds kernel (e.g., naif0012.tls)')
         sys.exit(2)
     
     # Determine bodies and epochs based on subcommand
@@ -103,7 +108,8 @@ def validate_kernels(args):
     try:
         spice.et2utc(0, 'C', 0)
     except:
-        print("Load a leapseconds kernel (e.g., naif0012.tls)", file=sys.stderr)
+        logger = logging.getLogger(__name__)
+        logger.error('Load a leapseconds kernel (e.g., naif0012.tls)')
         sys.exit(2)
     
     # Determine bodies and epochs based on subcommand
@@ -145,16 +151,16 @@ def validate_kernels(args):
     #         if cover:
     #             min_et = min(cover)
     #             max_et = max(cover)
-    #             print(f"SPK coverage for {body}: {spice.et2utc(min_et, 'C', 0)} to {spice.et2utc(max_et, 'C', 0)}")
+    #             logger.debug(f"SPK coverage for {body}: {spice.et2utc(min_et, 'C', 0)} to {spice.et2utc(max_et, 'C', 0)}")
     #             # Check if epochs are within coverage
     #             for epoch in epochs:
     #                 et = spice.utc2et(epoch.utc.isot)
     #                 if not (min_et <= et <= max_et):
-    #                     print(f"Warning: Epoch {epoch.utc.isot} for body {body} is outside SPK coverage", file=sys.stderr)
+    #                     logger.warning(f"Epoch {epoch.utc.isot} for body {body} is outside SPK coverage")
     #         else:
-    #             print(f"No SPK coverage for {body}", file=sys.stderr)
+    #             logger.warning(f"No SPK coverage for {body}")
     #     except Exception as e:
-    #         print(f"SPK coverage check failed for {body}: {e}", file=sys.stderr)
+    #         logger.exception(f"SPK coverage check failed for {body}: {e}")
 
 
 def run_em_grid(args):
@@ -212,7 +218,7 @@ def run_em_grid(args):
         writer = csv.writer(sys.stdout) if args.format == 'csv' else None
         header = ['dep_tdb', 'tof_days', 'c3', 'vinf_in_x', 'vinf_in_y', 'vinf_in_z', 'vinf_out_x', 'vinf_out_y', 'vinf_out_z', 'arr_tdb', 'dep_idx', 'tof_idx']
         if args.format == 'table':
-            print('\t'.join(header))
+                print('\t'.join(header))
         else:
             writer.writerow(header)
         for i in range(len(dep_times)):
@@ -229,7 +235,7 @@ def run_em_grid(args):
                         i, j
                     ]
                     if args.format == 'table':
-                        print('\t'.join(str(x) for x in row))
+                            print('\t'.join(str(x) for x in row))
                     else:
                         writer.writerow(row)
 
@@ -270,14 +276,12 @@ def run_em_grid(args):
         
         # Generate and save porkchop plot
         png_path = os.path.join(args.outdir, 'porkchop.png')
-        print(f"Generating porkchop plot: {png_path}")
+        logger.info('Generating porkchop plot: %s', png_path)
         try:
             plot_c3(dep_times, tof_days, c3_grid, png_path)
-            print(f"Plot saved as {png_path}")
+            logger.info('Plot saved as %s', png_path)
         except Exception as e:
-            print(f"ERROR generating plot: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception('ERROR generating plot: %s', e)
 
 
 def run_flyby(args):
@@ -326,7 +330,8 @@ def run_flyby(args):
     )
     
     if not fly.success:
-        print(f"No feasible flyby given min altitude {args.alt_min} km; try higher v∞ or lower alt.", file=sys.stderr)
+        logger = logging.getLogger(__name__)
+        logger.error('No feasible flyby given min altitude %s km; try higher v∞ or lower alt.', args.alt_min)
         sys.exit(1)
     
     vinf_in_mag = np.linalg.norm(vinf_in)
@@ -337,7 +342,8 @@ def run_flyby(args):
     compute_array_hash(vinf_in, 'vinf_in')
     
     if not fly.success:
-        print(f"No feasible flyby given min altitude {args.alt_min} km; try higher v∞ or lower alt.", file=sys.stderr)
+        logger = logging.getLogger(__name__)
+        logger.error('No feasible flyby given min altitude %s km; try higher v∞ or lower alt.', args.alt_min)
         sys.exit(1)
     
     vinf_in_mag = np.linalg.norm(vinf_in)
@@ -561,7 +567,8 @@ def run_emc_chain(args):
         # Run flyby
         fly = compute_flyby(arr_epoch.tdb, rM, vM, MU_MARS, vinf_in, (R_MARS + args.min_alt, R_MARS + 10000.0), '20000001', MU_SUN, (arr_epoch + 200*u.day, arr_epoch + 1000*u.day), max_samples=200, seed=args.seed or 42)
         if not fly.success:
-            print(f"No feasible flyby given min altitude {args.min_alt} km; try higher v∞ or lower alt.", file=sys.stderr)
+            logger = logging.getLogger(__name__)
+            logger.error('No feasible flyby given min altitude %s km; try higher v∞ or lower alt.', args.min_alt)
             continue
 
         vinf_in_mag = np.linalg.norm(vinf_in)
@@ -752,19 +759,19 @@ def run_chain3_original(args):
     echo_time_scale_conversion(dep_start_str, args.time_scale, dep_start)
     echo_time_scale_conversion(dep_end_str, args.time_scale, dep_end)
     
-    print(f"\n=== Three-Body Chain Configuration ===")
-    print(f"Departure body: {args.dep_body}")
-    print(f"Flyby body: {args.flyby_body}")
-    print(f"Arrival body: {args.arr_body}")
-    print(f"Departure window: {dep_start.iso} to {dep_end.iso}")
-    print(f"Leg 1 TOF: {leg1_tof_min}-{leg1_tof_max} days (step {leg1_tof_step})")
-    print(f"Leg 2 TOF: {leg2_tof_min}-{leg2_tof_max} days (step {leg2_tof_step})")
-    print(f"Periapsis bounds: {rp_min:.1f}-{rp_max:.1f} km")
-    print(f"B-plane theta: {btheta_min}° to {btheta_max}° ({int(btheta_n)} samples)")
-    print()
-    
+    logger.info("=== Three-Body Chain Configuration ===")
+    logger.info("Departure body: %s", args.dep_body)
+    logger.info("Flyby body: %s", args.flyby_body)
+    logger.info("Arrival body: %s", args.arr_body)
+    logger.info("Departure window: %s to %s", dep_start.iso, dep_end.iso)
+    logger.info("Leg 1 TOF: %s-%s days (step %s)", leg1_tof_min, leg1_tof_max, leg1_tof_step)
+    logger.info("Leg 2 TOF: %s-%s days (step %s)", leg2_tof_min, leg2_tof_max, leg2_tof_step)
+    logger.info("Periapsis bounds: %.1f-%.1f km", rp_min, rp_max)
+    logger.info("B-plane theta: %s° to %s° (%d samples)", btheta_min, btheta_max, int(btheta_n))
+    logger.info("")
+
     # STEP 1: Leg 1 scan (dep -> flyby)
-    print("STEP 1: Computing Leg 1 (Departure -> Flyby) grid...")
+    logger.info("STEP 1: Computing Leg 1 (Departure -> Flyby) grid...")
     from ..flows.em_only import screen_em_grid_cached
     
     dep_times, tof1_days, c3_leg1, vout_x, vout_y, vout_z, vin_x, vin_y, vin_z, \
@@ -778,12 +785,12 @@ def run_chain3_original(args):
     # Guardrails: Compute array hash for Leg 1
     compute_array_hash(c3_leg1, 'chain3_leg1_c3')
     
-    print(f"Leg 1 grid: {len(dep_times)} × {len(tof1_days)} = {c3_leg1.size} points")
+    logger.info("Leg 1 grid: %d × %d = %d points", len(dep_times), len(tof1_days), c3_leg1.size)
     finite_count = np.sum(np.isfinite(c3_leg1))
-    print(f"Feasible Leg 1 trajectories: {finite_count} ({100*finite_count/c3_leg1.size:.1f}%)")
+    logger.info("Feasible Leg 1 trajectories: %d (%.1f%%)", finite_count, 100*finite_count/c3_leg1.size)
     
     # STEP 2: Flyby map & Leg 2 scan
-    print("\nSTEP 2: Computing flyby maps and Leg 2 trajectories...")
+    logger.info("STEP 2: Computing flyby maps and Leg 2 trajectories...")
     
     # Prepare B-plane theta grid
     theta_grid = np.linspace(np.radians(btheta_min), np.radians(btheta_max), int(btheta_n))
@@ -945,22 +952,23 @@ def run_chain3_original(args):
     
     progress_bar(total_leg1, total_leg1, 'chain3')
     
-    print(f"\nFound {len(all_solutions)} feasible chain solutions")
+    logger = logging.getLogger(__name__)
+    logger.info('\nFound %d feasible chain solutions', len(all_solutions))
     
     # Rank and filter solutions
     if all_solutions:
         # Sort by score (lower is better: minimizes C3 + arrival v-infinity^2)
         all_solutions.sort(key=lambda x: x['score'])
         top_solutions = all_solutions[:args.max_solutions]
-        
-        print(f"Keeping top {len(top_solutions)} solutions")
-        
+
+        logger.info('Keeping top %d solutions', len(top_solutions))
+
         # Guardrails: Compute hash of top solutions
         scores = np.array([s['score'] for s in top_solutions])
         compute_array_hash(scores, 'chain3_top_scores')
     else:
         top_solutions = []
-        print("No feasible solutions found!")
+        logger.info('No feasible solutions found!')
     
     # Save artifacts
     if args.save:
@@ -1016,12 +1024,12 @@ def run_chain3_original(args):
         with open(meta_json, 'w') as f:
             json.dump(meta, f, indent=2)
         
-        print(f"\nArtifacts saved to {args.outdir}/")
-        print(f"  - chain3_leg1_grid.csv ({len(leg1_data)} rows)")
-        print(f"  - chain3_bplane_grid.csv ({len(bplane_data)} rows)")
-        print(f"  - chain3_leg2_grid.csv ({len(leg2_data)} rows)")
-        print(f"  - chain3_solutions.csv ({len(top_solutions)} rows)")
-        print(f"  - chain3_meta.json")
+    logger.info("Artifacts saved to %s/", args.outdir)
+    logger.info("  - chain3_leg1_grid.csv (%d rows)", len(leg1_data))
+    logger.info("  - chain3_bplane_grid.csv (%d rows)", len(bplane_data))
+    logger.info("  - chain3_leg2_grid.csv (%d rows)", len(leg2_data))
+    logger.info("  - chain3_solutions.csv (%d rows)", len(top_solutions))
+    logger.info("  - chain3_meta.json")
     
     # Output to stdout
     if top_solutions:

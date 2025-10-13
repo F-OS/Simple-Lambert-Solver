@@ -8,13 +8,15 @@ from typing import Sequence
 import sys
 
 import numpy as np
+import logging
 # Force matplotlib to use non-interactive backend for subprocess compatibility
 import matplotlib
-print(f"DEBUG porkchop.py import: matplotlib backend before use(): {matplotlib.get_backend()}", file=sys.stderr, flush=True)
+logger = logging.getLogger(__name__)
+logger.debug("porkchop import: matplotlib backend before use(): %s", matplotlib.get_backend())
 matplotlib.use('Agg', force=True)
-print(f"DEBUG porkchop.py import: matplotlib backend after use('Agg'): {matplotlib.get_backend()}", file=sys.stderr, flush=True)
+logger.debug("porkchop import: matplotlib backend after use('Agg'): %s", matplotlib.get_backend())
 import matplotlib.pyplot as plt
-print(f"DEBUG porkchop.py import: matplotlib backend after pyplot import: {matplotlib.get_backend()}", file=sys.stderr, flush=True)
+logger.debug("porkchop import: matplotlib backend after pyplot import: %s", matplotlib.get_backend())
 from astropy import units as u
 from astropy.time import Time
 import csv
@@ -159,15 +161,15 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
         overlay_label: label for the overlay legend
     """
     try:
-        print("DEBUG plot_porkchop: Function started", file=sys.stderr, flush=True)
+        logger.debug("plot_porkchop: Function started")
         dep_times = Time(dep_times)
-        print("DEBUG plot_porkchop: Converted dep_times to Time", file=sys.stderr, flush=True)
+        logger.debug("plot_porkchop: Converted dep_times to Time")
         dep_jd = dep_times.tdb.jd  # shape (N,)
-        print(f"DEBUG plot_porkchop: Got dep_jd, shape={dep_jd.shape}", file=sys.stderr, flush=True)
+        logger.debug("plot_porkchop: Got dep_jd, shape=%s", getattr(dep_jd, 'shape', None))
 
         N = len(dep_jd)
         M = len(tof_days)
-        print(f"DEBUG plot_porkchop: N={N}, M={M}", file=sys.stderr, flush=True)
+        logger.debug("plot_porkchop: N=%s, M=%s", N, M)
 
         # Arrival JD grid: arr_jd[i,j] = dep_jd[i] + tof_days[j]
         arr_jd = dep_jd[:, None] + tof_days[None, :]
@@ -179,18 +181,16 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
         # Determine JD offset for x-axis labeling
         if jd_offset is None:
             jd_offset = float(np.round(dep_jd.min() / 1000.0) * 1000.0)
-        print("DEBUG plot_porkchop: Computed grids", file=sys.stderr, flush=True)
+        logger.debug("plot_porkchop: Computed grids")
 
         # Prepare Z (C3) and mask NaNs
         Z = np.array(c3_grid, dtype=float)
         # Clip display to [cmin, cmax] and mask values outside that range (they'll be rendered white)
-    except Exception as e:
-        print(f"FATAL ERROR in plot_porkchop setup: {e}", file=sys.stderr, flush=True)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
+    except Exception:
+        logger.exception("FATAL ERROR in plot_porkchop setup")
         raise
     
-    print("DEBUG plot_porkchop: Creating display arrays", file=sys.stderr, flush=True)
+    logger.debug("plot_porkchop: Creating display arrays")
     try:
         display_min = float(cmin)
         display_max = float(cmax)
@@ -199,40 +199,36 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
         # Choose contour levels across display range
         levels = np.linspace(display_min, display_max, contour_levels)
 
-        print("DEBUG plot_porkchop: Creating figure", file=sys.stderr, flush=True)
+        logger.debug("plot_porkchop: Creating figure")
         fig, ax = plt.subplots(figsize=(9, 6))
-        print("DEBUG plot_porkchop: Creating contourf", file=sys.stderr, flush=True)
+        logger.debug("plot_porkchop: Creating contourf")
         # Use a colormap for the valid range
         cmap_obj = plt.get_cmap(cmap)
         cf = ax.contourf(X - jd_offset, Y, Z_display, levels=levels, cmap=cmap_obj, extend='both')
-        print("DEBUG plot_porkchop: Contourf created", file=sys.stderr, flush=True)
-    except Exception as e:
-        print(f"FATAL ERROR during matplotlib plotting: {e}", file=sys.stderr, flush=True)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
+        logger.debug("plot_porkchop: Contourf created")
+    except Exception:
+        logger.exception("FATAL ERROR during matplotlib plotting")
         raise
     
-    print("DEBUG plot_porkchop: Adding colorbar and overlays", file=sys.stderr, flush=True)
+    logger.debug("plot_porkchop: Adding colorbar and overlays")
     try:
         # Render out-of-range values as white by overlaying a white background where masked
         # Create a mask for values outside [display_min, display_max]
-        print("DEBUG: Creating outside_mask", file=sys.stderr, flush=True)
+        logger.debug("Creating outside_mask")
         outside_mask = np.isnan(Z) | (Z < display_min) | (Z > display_max)
-        print("DEBUG: Checking if any outside_mask", file=sys.stderr, flush=True)
+        logger.debug("Checking if any outside_mask")
         if np.any(outside_mask):
-            print("DEBUG: Applying white overlay", file=sys.stderr, flush=True)
+            logger.debug("Applying white overlay")
             ax.contourf(X - jd_offset, Y, outside_mask.astype(float), levels=[0.5, 1.5], colors=['white'], alpha=1.0)
         
         # Skip colorbar - it crashes in subprocess
-        print("DEBUG: Skipping colorbar (known matplotlib bug in subprocess)", file=sys.stderr, flush=True)
+        logger.debug("Skipping colorbar (known matplotlib bug in subprocess)")
         # cbar = plt.colorbar(cf, ax=ax)
         # cbar.set_label('C3 (km$^2$/s$^2$)')
-        print("DEBUG plot_porkchop: Colorbar skipped", file=sys.stderr, flush=True)
-        print("DEBUG plot_porkchop: Colorbar added", file=sys.stderr, flush=True)
+        logger.debug("plot_porkchop: Colorbar skipped")
+        logger.debug("plot_porkchop: Colorbar added")
     except Exception as e:
-        print(f"FATAL ERROR adding colorbar: {e}", file=sys.stderr, flush=True)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
+        logger.exception("FATAL ERROR adding colorbar")
         raise
 
     # Optional overlay mask
@@ -245,26 +241,24 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
             ax.fill_between([], [], facecolor='none', hatch='///', label=overlay_label)
             ax.legend(loc='upper right')
 
-    print("DEBUG plot_porkchop: Adding TOF contours", file=sys.stderr, flush=True)
+    logger.debug("plot_porkchop: Adding TOF contours")
     try:
         # Diagonal TOF contours: compute TOF grid and draw lines
-        print("DEBUG: Computing TOF grid", file=sys.stderr, flush=True)
+        logger.debug("Computing TOF grid")
         TOF = Y - X
         tof_min = int(np.nanmin(tof_days))
         tof_max = int(np.nanmax(tof_days))
         tof_levels = np.arange(tof_min, tof_max + 1, tof_contour_step)
-        print("DEBUG: Creating contour lines", file=sys.stderr, flush=True)
+        logger.debug("Creating contour lines")
         cs = ax.contour(X - jd_offset, Y, TOF, levels=tof_levels, colors='k', linewidths=0.7)
-        print("DEBUG: Skipping contour labels (matplotlib bug)", file=sys.stderr, flush=True)
+        logger.debug("Skipping contour labels (matplotlib bug)")
         # ax.clabel(cs, fmt='%d d', inline=True, fontsize=8)  # Crashes in subprocess
-        print("DEBUG plot_porkchop: TOF contours added", file=sys.stderr, flush=True)
+        logger.debug("plot_porkchop: TOF contours added")
     except Exception as e:
-        print(f"FATAL ERROR adding TOF contours: {e}", file=sys.stderr, flush=True)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
+        logger.exception("FATAL ERROR adding TOF contours")
         raise
 
-    print("DEBUG plot_porkchop: Plotting valley", file=sys.stderr, flush=True)
+    logger.debug("plot_porkchop: Plotting valley")
     try:
         # Plot valley: for each departure (row) find TOF index of min C3
         valley_tofs = []
@@ -284,14 +278,12 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
         valley_tofs = np.array(valley_tofs)
         valley_arrs = np.array(valley_arrs)
         ax.plot(dep_jd - jd_offset, valley_arrs, color='white', linestyle='--', linewidth=1.5, marker='o', markersize=3, markerfacecolor='white', markeredgecolor='black')
-        print("DEBUG plot_porkchop: Valley plotted", file=sys.stderr, flush=True)
+        logger.debug("plot_porkchop: Valley plotted")
     except Exception as e:
-        print(f"FATAL ERROR plotting valley: {e}", file=sys.stderr, flush=True)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
+        logger.exception("FATAL ERROR plotting valley")
         raise
 
-    print("DEBUG: Setting axis labels and title", file=sys.stderr, flush=True)
+    logger.debug("Setting axis labels and title")
     # Axis labels and title — use human-friendly calendar labels now
     ax.set_xlabel('Departure date')
     ax.set_ylabel('Arrival date')
@@ -310,7 +302,7 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
 
     ax.set_title(f'C3 Porkchop ({_name(dep_body)} → {_name(arr_body)})')
 
-    print("DEBUG: Setting X axis ticks", file=sys.stderr, flush=True)
+    logger.debug("Setting X axis ticks")
     # Tidy ticks: show a few x ticks as calendar dates (YYYY-MM-DD)
     # We compute tick positions in JD, then subtract jd_offset for plotting coordinates
     def _nice_ticks(start, stop, max_ticks=6):
@@ -332,7 +324,7 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
     ax.set_xticks(xtick_locs)
     ax.set_xticklabels(xtick_labels, rotation=30, ha='right')
 
-    print("DEBUG: Setting Y axis ticks", file=sys.stderr, flush=True)
+    logger.debug("Setting Y axis ticks")
     # Y ticks: arrival calendar dates
     y_min = arr_jd.min()
     y_max = arr_jd.max()
@@ -347,47 +339,45 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
     ax.set_yticks(yticks_jd)
     ax.set_yticklabels(ytick_labels)
 
-    print("DEBUG: Skipping tight_layout (matplotlib bug)", file=sys.stderr, flush=True)
+    logger.debug("Skipping tight_layout (matplotlib bug)")
     # plt.tight_layout()  # Crashes in subprocess with Agg backend
-    print(f'DEBUG porkchop: About to save plot to: {outname}', file=sys.stderr, flush=True)
+    logger.debug('porkchop: About to save plot to: %s', outname)
     import os
-    print(f'DEBUG porkchop: File path is absolute: {os.path.isabs(outname)}')
+    logger.debug('porkchop: File path is absolute: %s', os.path.isabs(outname))
     parent_dir = os.path.dirname(outname) if os.path.dirname(outname) else "."
-    print(f'DEBUG porkchop: Parent directory "{parent_dir}" exists: {os.path.exists(parent_dir)}', file=sys.stderr, flush=True)
+    logger.debug('porkchop: Parent directory "%s" exists: %s', parent_dir, os.path.exists(parent_dir))
     try:
-        print(f'DEBUG porkchop: Converting canvas to PIL Image', file=sys.stderr, flush=True)
+        logger.debug('porkchop: Converting canvas to PIL Image')
         # Workaround: Convert to PIL Image and save directly (avoids matplotlib savefig bug)
         import io
         from PIL import Image
-        
+
         canvas = fig.canvas
         canvas.draw()
-        print(f'DEBUG porkchop: Canvas drawn', file=sys.stderr, flush=True)
-        
+        logger.debug('porkchop: Canvas drawn')
+
         # Get the RGBA buffer from the figure canvas
         buf = io.BytesIO()
         canvas.print_png(buf)
         buf.seek(0)
-        print(f'DEBUG porkchop: Buffer created', file=sys.stderr, flush=True)
-        
+        logger.debug('porkchop: Buffer created')
+
         # Open with PIL and save
         img = Image.open(buf)
-        print(f'DEBUG porkchop: PIL Image opened', file=sys.stderr, flush=True)
+        logger.debug('porkchop: PIL Image opened')
         img.save(outname, 'PNG')
-        print(f'DEBUG porkchop: PIL Image saved', file=sys.stderr, flush=True)
-        
+        logger.debug('porkchop: PIL Image saved')
+
         plt.close(fig)
-        print(f'Plot saved as {outname}', file=sys.stderr, flush=True)
+        logger.info('Plot saved as %s', outname)
         # Verify the file was actually created
         if os.path.exists(outname):
-            print(f'DEBUG porkchop: Confirmed file exists, size: {os.path.getsize(outname)} bytes')
+            logger.debug('porkchop: Confirmed file exists, size: %s bytes', os.path.getsize(outname))
         else:
-            print(f'WARNING porkchop: savefig returned but file does not exist!')
+            logger.warning('porkchop: savefig returned but file does not exist!')
     except Exception as e:
         plt.close(fig)
-        print(f'ERROR porkchop: Failed to save plot: {e}')
-        import traceback
-        traceback.print_exc()
+        logger.exception('ERROR porkchop: Failed to save plot')
         raise
 
 
@@ -460,20 +450,18 @@ def plot_rp_heatmap(dep_times: Sequence[Time], tof_days: np.ndarray, rp_grid: np
     plt.tight_layout()
     fig.savefig(outname, dpi=200)
     plt.close(fig)
-    print(f'Plot saved as {outname}')
+    logger.info('Plot saved as %s', outname)
 
 
 def plot_c3(dep_times, tof_days, c3_grid, out_png):
     """Plot C3 porkchop plot."""
-    print(f"DEBUG plot_c3: Called with out_png={out_png}")
-    print(f"DEBUG plot_c3: c3_grid shape={c3_grid.shape if hasattr(c3_grid, 'shape') else 'N/A'}")
-    print(f"DEBUG plot_c3: Calling plot_porkchop...")
+    logger.debug('plot_c3: Called with out_png=%s', out_png)
+    logger.debug('plot_c3: c3_grid shape=%s', getattr(c3_grid, 'shape', 'N/A'))
+    logger.debug('plot_c3: Calling plot_porkchop...')
     try:
         plot_porkchop(dep_times, tof_days, c3_grid, outname=out_png)
-        print(f"DEBUG plot_c3: plot_porkchop returned successfully")
-    except Exception as e:
-        print(f"ERROR plot_c3: Exception in plot_porkchop: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.debug('plot_c3: plot_porkchop returned successfully')
+    except Exception:
+        logger.exception('ERROR plot_c3: Exception in plot_porkchop')
         raise
 

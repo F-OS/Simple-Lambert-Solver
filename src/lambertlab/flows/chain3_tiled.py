@@ -13,6 +13,7 @@ from typing import List, Dict, Any
 import pandas as pd
 from astropy import units as u
 from astropy.time import Time
+import logging
 
 from ..core.checkpoint import (
     Tile, TileResult, IndexDB, checkpoint_context,
@@ -309,74 +310,74 @@ def run_chain3_checkpointed(config: Chain3Config, outdir: Path, resume: bool = T
         'lambertlab/flows/chain3_tiled.py'
     ]
     
-    print(f"Starting chain3 computation")
-    print(f"Output directory: {outdir}")
-    print(f"Resume mode: {resume}")
-    print()
+    logger = logging.getLogger(__name__)
+    logger.info('Starting chain3 computation')
+    logger.info('Output directory: %s', outdir)
+    logger.info('Resume mode: %s', resume)
+    logger.info('')
     
     with checkpoint_context(outdir, config.to_dict(), code_modules) as idx:
         # Create tiles
         tiles = make_chain3_tiles(config)
-        print(f"Total tiles: {len(tiles)}")
-        
+        logger.info('Total tiles: %d', len(tiles))
+
         # Register tiles
         idx.ensure_tiles(tiles)
-        
+
         # Get pending tiles
         pending = idx.pending_tiles()
-        print(f"Pending tiles: {len(pending)}")
-        
+        logger.info('Pending tiles: %d', len(pending))
+
         if len(pending) < len(tiles):
-            print(f"Resuming from checkpoint ({len(tiles) - len(pending)} tiles already done)")
-        
-        print()
-        
+            logger.info('Resuming from checkpoint (%d tiles already done)', len(tiles) - len(pending))
+
+        logger.info('')
+
         # Process tiles
         last_heartbeat = time.time()
-        
+
         for i, tile in enumerate(pending):
-            print(f"Processing tile {i+1}/{len(pending)}: {tile.id}")
-            
+            logger.info('Processing tile %d/%d: %s', i+1, len(pending), tile.id)
+
             try:
                 idx.mark_running(tile.id)
                 result = process_chain3_tile(tile, config, outdir)
                 idx.mark_done(tile.id, result.out_path, result.out_hash, result.n_records)
-                print(f"  [OK] Done: {result.n_records} solutions ({result.walltime_s:.1f}s)")
+                logger.info('  [OK] Done: %d solutions (%.1fs)', result.n_records, result.walltime_s)
             except Exception as e:
                 idx.mark_error(tile.id, str(e))
-                print(f"  [ERR] Error: {e}")
-            
+                logger.exception('  [ERR] Error: %s', e)
+
             # Heartbeat
             if time.time() - last_heartbeat > config.checkpoint_sec:
                 progress = idx.progress_summary()
                 write_state(outdir, progress)
-                
-                print(f"\nProgress: {progress['done']}/{progress['total']} tiles "
-                      f"({progress['progress_pct']:.1f}%)")
+
+                logger.info('\nProgress: %d/%d tiles (%.1f%%)', progress['done'], progress['total'], progress['progress_pct'])
                 if progress['eta_seconds']:
                     eta_min = progress['eta_seconds'] / 60
-                    print(f"ETA: {eta_min:.1f} minutes")
-                print()
-                
+                    logger.info('ETA: %.1f minutes', eta_min)
+                logger.info('')
+
                 last_heartbeat = time.time()
-        
+
         # Final progress
         progress = idx.progress_summary()
         write_state(outdir, progress)
-        
-        print()
-        print("=" * 60)
-        print("Tile processing complete!")
-        print(f"Total: {progress['total']} tiles")
-        print(f"Done: {progress['done']}")
-        print(f"Errors: {progress['error']}")
-        print()
-        
-        # Merge tiles
-        print("Merging tile results...")
-        merge_tiles(outdir, config)
-        
-        print("[OK] Chain3 computation complete!")
+
+        logger.info('')
+        logger.info('%s', '=' * 60)
+        logger.info('Tile processing complete!')
+        logger.info('Total: %d tiles', progress['total'])
+        logger.info('Done: %d', progress['done'])
+        logger.info('Errors: %d', progress['error'])
+        logger.info('')
+
+    # Merge tiles
+    logger.info('Merging tile results...')
+    merge_tiles(outdir, config)
+
+    logger.info('[OK] Chain3 computation complete!')
 
 
 def merge_tiles(outdir: Path, config: Chain3Config):
@@ -391,7 +392,8 @@ def merge_tiles(outdir: Path, config: Chain3Config):
     csv_files = list(tile_dir.glob('chain3_*.csv'))
     
     if not csv_files:
-        print("No tile results to merge")
+        logger = logging.getLogger(__name__)
+        logger.info('No tile results to merge')
         return
     
     # Read all tiles
@@ -402,21 +404,24 @@ def merge_tiles(outdir: Path, config: Chain3Config):
             if len(df) > 0:
                 dfs.append(df)
         except Exception as e:
-            print(f"Warning: Could not read {csv_file}: {e}")
+            logger = logging.getLogger(__name__)
+            logger.warning('Could not read %s: %s', csv_file, e)
     
     if not dfs:
-        print("No valid solutions found")
+        logger = logging.getLogger(__name__)
+        logger.info('No valid solutions found')
         return
     
     # Concatenate
     all_solutions = pd.concat(dfs, ignore_index=True)
-    print(f"Total solutions before filtering: {len(all_solutions)}")
+    logger = logging.getLogger(__name__)
+    logger.info('Total solutions before filtering: %d', len(all_solutions))
     
     # Sort by score and keep top N
     all_solutions = all_solutions.sort_values('score')
     top_solutions = all_solutions.head(config.max_solutions)
     
-    print(f"Top solutions (keeping {len(top_solutions)})")
+    logger.info('Top solutions (keeping %d)', len(top_solutions))
     
     # Write final solutions
     from ..core.checkpoint import atomic_write_csv
@@ -425,6 +430,6 @@ def merge_tiles(outdir: Path, config: Chain3Config):
     # Also write all solutions for reference
     atomic_write_csv(all_solutions, outdir / 'chain3_all_solutions.csv')
     
-    print(f"Saved to:")
-    print(f"  {outdir / 'chain3_solutions.csv'} (top {len(top_solutions)})")
-    print(f"  {outdir / 'chain3_all_solutions.csv'} (all {len(all_solutions)})")
+    logger.info('Saved to:')
+    logger.info('  %s (top %d)', outdir / 'chain3_solutions.csv', len(top_solutions))
+    logger.info('  %s (all %d)', outdir / 'chain3_all_solutions.csv', len(all_solutions))

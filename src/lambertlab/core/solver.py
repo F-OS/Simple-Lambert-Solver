@@ -15,6 +15,7 @@ from astropy.time import Time
 from typing import Tuple, Union
 from .config import DEFAULT_KERNELS
 from .spice_io import load_kernels
+import logging
 
 # PyKEP constants
 MU_SUN_KM3S2 = 1.32712440018e11  # km^3/s^2 (Sun's gravitational parameter)
@@ -149,4 +150,5 @@ def best_lambert_branch(r_dep, v_dep_planet, r_arr, v_arr_planet, tof, rtol=1e-1
 
 
 if __name__ == '__main__':
-    print("This module is not meant to be run directly. Use main.py instead.")
+    logger = logging.getLogger(__name__)
+    logger.info('This module is not meant to be run directly. Use main.py instead.')

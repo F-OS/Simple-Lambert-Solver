@@ -6,6 +6,7 @@ from typing import Tuple, Union, Optional
 import numpy as np
 import pykep as pk
 from astropy import units as u
+import logging
 
 from .types import Vec, KM, KMS, C3_TOL
 
@@ -87,11 +88,13 @@ def best_lambert_branch(
     # Validate TOF
     tof_days = tof.to_value(u.day)
     if tof_days <= 0:
-        print(f"Error: Invalid TOF {tof_days} days (must be positive)")
+        logger = logging.getLogger(__name__)
+        logger.warning('Invalid TOF %s days (must be positive)', tof_days)
         return None
         
     if not np.isfinite(tof_days):
-        print(f"Error: Invalid TOF {tof_days} days (not finite)")
+        logger = logging.getLogger(__name__)
+        logger.warning('Invalid TOF %s days (not finite)', tof_days)
         return None
     
     try:
@@ -143,10 +146,12 @@ def best_lambert_branch(
             C3_val, v_dep_best, v_arr_best, used = best
             vinf_dep = v_dep_best - v_dep_planet
             if (not np.isfinite(C3_val)) or (abs(np.linalg.norm(vinf_dep) - np.sqrt(C3_val)) > C3_TOL):
-                print(f"Warning: C3 consistency check failed for TOF {tof_days:.1f} days")
+                logger = logging.getLogger(__name__)
+                logger.warning('C3 consistency check failed for TOF %.1f days', tof_days)
                 return None
 
         return best
     except Exception as e:
-        print(f"Error: Lambert solve failed for TOF {tof_days:.1f} days: {e}")
+        logger = logging.getLogger(__name__)
+        logger.exception('Lambert solve failed for TOF %.1f days: %s', tof_days, e)
         return None
