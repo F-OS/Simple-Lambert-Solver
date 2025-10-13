@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+
 import numpy as np
 from astropy.time import Time
 from astropy import units as units
 import spiceypy as spice
 import logging
 
-try:
-    from poliastro.twobody import Orbit
-    from poliastro.bodies import Sun
-    POLIASTRO_AVAILABLE = True
-except ImportError:
-    POLIASTRO_AVAILABLE = False
-
 from ..core.config import MU_SUN
+from ..core.orbits import kepler_propagate
+
+logger = logging.getLogger(__name__)
 
 
 def validate_trajectory(em_row: dict, mc_row: dict) -> dict:
@@ -32,12 +32,13 @@ def validate_trajectory(em_row: dict, mc_row: dict) -> dict:
         - propagation_ok: Whether propagation succeeded
         - error_msg: Error message if propagation failed
     """
-    if not POLIASTRO_AVAILABLE:
+    # Ensure we have a kepler propagator
+    if 'kepler_propagate' not in globals():
         return {
             'min_distance_km': np.nan,
             'arrival_distance_km': np.nan,
             'propagation_ok': False,
-            'error_msg': 'poliastro not available'
+            'error_msg': 'kepler propagator not available'
         }
 
     try:
@@ -74,18 +75,9 @@ def validate_trajectory(em_row: dict, mc_row: dict) -> dict:
         # In full implementation, we'd apply the flyby delta-V
         v_sc_dep_helio = v_sc_mars_arr_helio
 
-        # Create poliastro orbit at Mars
-        r_mars = r_mars_vec * units.km
-        v_sc = v_sc_dep_helio * units.km / units.s
-
-        orbit = Orbit.from_vectors(Sun, r_mars, v_sc, epoch=t_mars)
-
-        # Propagate to Ceres arrival time
-        dt_to_ceres = t_ceres - t_mars
-        orbit_ceres = orbit.propagate(dt_to_ceres)
-
-        # Get propagated position
-        r_sc_ceres = orbit_ceres.r.to(units.km).value
+        # Use our kepler_propagate utility (r in km, v in km/s, dt in seconds)
+        dt_to_ceres_s = (t_ceres.tdb - t_mars.tdb).to_value(units.s)
+        r_sc_ceres, _ = kepler_propagate(r_mars_vec, v_sc_dep_helio, dt_to_ceres_s, MU_SUN)
 
         # Get Ceres position from SPICE
         et_ceres = spice.str2et(ceres_iso)
@@ -96,18 +88,17 @@ def validate_trajectory(em_row: dict, mc_row: dict) -> dict:
         arrival_distance_km = np.linalg.norm(r_sc_ceres - r_ceres)
 
         # For minimum distance, sample the trajectory coarsely
-        dt_days = (t_ceres - t_mars).to_value(units.day)
+        dt_seconds = dt_to_ceres_s
         n_samples = 20
-        dt_samples = np.linspace(0, dt_days, n_samples) * units.day
+        dt_samples = np.linspace(0, dt_seconds, n_samples)
 
         min_distance_km = float('inf')
-        for dt in dt_samples[1:-1]:  # Skip start and end points
+        for dt_s in dt_samples[1:-1]:  # Skip start and end points
             try:
-                orbit_t = orbit.propagate(dt)
-                r_sc_t = orbit_t.r.to(units.km).value
+                r_sc_t, _ = kepler_propagate(r_mars_vec, v_sc_dep_helio, float(dt_s), MU_SUN)
 
                 # Calculate time for SPICE
-                t_current = t_mars + dt
+                t_current = t_mars + (float(dt_s) * units.s)
                 et_t = spice.str2et(t_current.iso)
                 r_target_state, _ = spice.spkpos('20000001', et_t, 'ECLIPJ2000', 'NONE', 'SUN')
                 r_target = np.array(r_target_state)
@@ -133,7 +124,7 @@ def validate_trajectory(em_row: dict, mc_row: dict) -> dict:
         }
 
 
-def validate_emc_candidates(em_csv: str = 'em_porkchop.csv', mc_csv: str = 'mc_req.csv',
+def validate_emc_candidates(em_csv: str = 'C:/Users/letsf/OneDrive/Documents/GitHub/Simple-Lambert-Solver/em_porkchop.csv', mc_csv: str = 'C:/Users/letsf/OneDrive/Documents/GitHub/Simple-Lambert-Solver/mc_req.csv',
                            n_candidates: int = 5) -> None:
     """Validate top EMC candidates by propagation.
 
