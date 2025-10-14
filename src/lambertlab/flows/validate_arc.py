@@ -14,6 +14,7 @@ import logging
 
 from ..core.config import MU_SUN
 from ..core.orbits import kepler_propagate
+from ..core.spice_io import load_kernels
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,9 @@ def validate_emc_candidates(em_csv: str = 'C:/Users/letsf/OneDrive/Documents/Git
     """
     import csv
     from collections import defaultdict
+
+    # Load SPICE kernels using centralized function
+    load_kernels()
 
     # Read EM data: mars_iso -> list of rows
     em_data = defaultdict(list)

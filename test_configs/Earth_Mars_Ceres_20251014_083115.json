@@ -1,0 +1,24 @@
+{
+  "simulation_type": "chain3",
+  "timestamp": "20251014_083115",
+  "parameters": {
+    "dep_id": "399",
+    "dep_body_name": "Earth",
+    "flyby_id": "499",
+    "flyby_body_name": "Mars",
+    "arr_id": "20000001",
+    "arr_body_name": "Ceres",
+    "dep_window": "2035-05-26:2035-10-7",
+    "dep_step": "1",
+    "leg1_tof": "100:300:5",
+    "leg2_tof": "0:1200:5",
+    "rp_bounds": "3696.2:13396.2",
+    "bplane_theta": "-150:150:7",
+    "max_solutions": "200",
+    "dv_tol": "500",
+    "dep_start": "2035-05-26",
+    "dep_end": "2035-10-7",
+    "r_flyby": "3396.2",
+    "alt_min": "300.0"
+  }
+}

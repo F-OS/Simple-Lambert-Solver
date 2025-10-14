@@ -366,7 +366,7 @@ def get_two_body_grid_params():
             kernels = load_default_kernels()
             sp.kclear()
             
-            cmd = ["em-grid"]
+            cmd = ["transfer-grid"]
             for k in kernels:
                 cmd.extend(["--kernels", k])
             cmd.extend([
@@ -376,8 +376,8 @@ def get_two_body_grid_params():
                 "--tof-min", params['tof_min'],
                 "--tof-max", params['tof_max'],
                 "--tof-step", params['tof_step'],
-                "--dep-id", params['dep_id'],
-                "--arr-id", params['arr_id'],
+                "--dep-body", params['dep_id'],
+                "--arr-body", params['arr_id'],
                 "--save"
             ])
             print(f"\n✓ Loaded config: {params['dep_body_name']} → {params['arr_body_name']}")
@@ -438,7 +438,7 @@ def get_two_body_grid_params():
     # Clean up
     sp.kclear()
 
-    cmd = ["em-grid"]
+    cmd = ["transfer-grid"]
     for k in kernels:
         cmd.extend(["--kernels", k])
     cmd.extend([
@@ -448,8 +448,8 @@ def get_two_body_grid_params():
         "--tof-min", tof_min,
         "--tof-max", tof_max,
         "--tof-step", tof_step,
-        "--dep-id", dep_id,
-        "--arr-id", arr_id,
+        "--dep-body", dep_id,
+        "--arr-body", arr_id,
         "--save"
     ])
 
@@ -607,6 +607,133 @@ def get_flyby_params():
     
     if b_hat_args:
         cmd.extend(b_hat_args)
+    
+    cmd.append("--save")
+    
+    return cmd
+
+def get_transfer_screen_params():
+    """Get parameters for transfer screening (v∞ requirements for fixed departure)."""
+    print("\n=== Two Body Screening ===")
+    print("Screen v∞ requirements from a fixed departure date to an arrival body.")
+    print("Useful for evaluating continuation legs after a planetary encounter.")
+    print()
+    
+    # Check for saved configs
+    use_saved = input("Load from saved config? (y/n) [n]: ").strip().lower()
+    if use_saved == 'y':
+        config = select_saved_config('transfer_screen')
+        if config:
+            params = config['parameters']
+            # Build command from saved params
+            kernels = load_default_kernels()
+            sp.kclear()
+            
+            cmd = ["transfer-screen"]
+            for k in kernels:
+                cmd.extend(["--kernels", k])
+            cmd.extend([
+                "--dep-epoch", params['dep_epoch'],
+                "--arr-window", params['arr_window'],
+                "--tof-min", params['tof_min'],
+                "--tof-max", params['tof_max'],
+                "--tof-step", params['tof_step'],
+                "--dep-body", params['dep_id'],
+                "--arr-body", params['arr_id']
+            ])
+            
+            if params.get('c3_cap'):
+                cmd.extend(["--c3-cap", params['c3_cap']])
+            
+            cmd.append("--save")
+            print(f"\n✓ Loaded config: {params['dep_body_name']} (departure) → {params['arr_body_name']} (arrival)")
+            return cmd
+        else:
+            # No config selected or none available, fall through to manual entry
+            print("Continuing with manual parameter entry...\n")
+    
+    # Load kernels for validation
+    kernels = load_default_kernels()
+    
+    # Get fixed departure date
+    dep_epoch = input("Fixed departure date (YYYY-MM-DD) [2025-06-01]: ").strip() or "2025-06-01"
+    
+    # Get departure body with ephemeris validation
+    print("\nDeparture body (where you're leaving from):")
+    print("Common: 499 (Mars), 299 (Venus), 399 (Earth)")
+    dep_id = get_body_input("Enter NAIF ID or name", 499, "Mars", dep_epoch)
+    if not dep_id:
+        print("Cancelled.")
+        return None
+    
+    # Get body name for saving
+    dep_params = get_body_params(dep_id)
+    dep_body_name = dep_params[2] if dep_params else f"Body{dep_id}"
+    
+    # Get arrival window
+    print("\nArrival time window:")
+    print("Specify the range of acceptable arrival dates.")
+    arr_start = input("Arrival start date (YYYY-MM-DD) [2025-10-01]: ").strip() or "2025-10-01"
+    arr_end = input("Arrival end date (YYYY-MM-DD) [2026-02-01]: ").strip() or "2026-02-01"
+    arr_window = f"{arr_start}:{arr_end}"
+    
+    # Get arrival body with ephemeris validation
+    print("\nArrival body (destination):")
+    print("Common: 20000001 (Ceres), 599 (Jupiter), 699 (Saturn)")
+    arr_id = get_body_input("Enter NAIF ID or name", 20000001, "Ceres", arr_start)
+    if not arr_id:
+        print("Cancelled.")
+        return None
+    
+    # Get body name for saving
+    arr_params = get_body_params(arr_id)
+    arr_body_name = arr_params[2] if arr_params else f"Body{arr_id}"
+    
+    # Get TOF parameters
+    print("\nTime-of-flight (TOF) search range:")
+    tof_min = input("Minimum TOF (days) [150]: ").strip() or "150"
+    tof_max = input("Maximum TOF (days) [400]: ").strip() or "400"
+    tof_step = input("TOF step (days) [5]: ").strip() or "5"
+    
+    # Get optional C3 cap
+    c3_cap_input = input("\nOptional: C3 cap (km²/s²) to filter high-energy trajectories [none]: ").strip()
+    c3_cap = c3_cap_input if c3_cap_input else None
+    
+    # Save configuration
+    params = {
+        'dep_epoch': dep_epoch,
+        'arr_window': arr_window,
+        'arr_start': arr_start,
+        'arr_end': arr_end,
+        'tof_min': tof_min,
+        'tof_max': tof_max,
+        'tof_step': tof_step,
+        'dep_id': dep_id,
+        'arr_id': arr_id,
+        'dep_body_name': dep_body_name,
+        'arr_body_name': arr_body_name,
+        'c3_cap': c3_cap
+    }
+    save_test_config('transfer_screen', params, [dep_body_name, arr_body_name])
+    
+    # Clean up
+    sp.kclear()
+    
+    cmd = ["transfer-screen"]
+    for k in kernels:
+        cmd.extend(["--kernels", k])
+    cmd.extend([
+        "--dep-epoch", dep_epoch,
+        "--arr-window", arr_window,
+        "--tof-min", tof_min,
+        "--tof-max", tof_max,
+        "--tof-step", tof_step,
+        "--dep-body", dep_id,
+        "--arr-body", arr_id
+    ])
+    
+    if c3_cap:
+        cmd.extend(["--c3-cap", c3_cap])
     
     cmd.append("--save")
     
@@ -916,8 +1043,12 @@ def main():
                 run_command(cmd)
 
         elif choice == "3":
-            print("\nTwo Body Screening - not yet implemented in interactive mode")
-            print("Use: python -m lambertlab.cli.main mc-screen --help for options")
+            cmd = get_transfer_screen_params()
+            if cmd:
+                print(f"\nRunning transfer screening...")
+                print("This will evaluate v∞ requirements across the TOF/arrival window.")
+                print("Results will be saved to 'artifacts/transfer_grid.csv'")
+                run_command(cmd)
 
         elif choice == "4":
             cmd = get_three_body_chain_params()

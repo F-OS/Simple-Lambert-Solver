@@ -16,7 +16,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 from ..core.spice_io import load_kernels, rv_helio_spice
-from ..flows.em_only import screen_em_grid_cached
+from ..flows.transfer_grid import screen_transfer_grid_cached, eval_transfer_point
+from ..flows.transfer_requirements import eval_transfer_requirement
 from ..flows.flyby import compute_flyby
 from ..core.lambert_io import solve_leg
 from ..core.config import MU_SUN, MU_MARS, R_MARS
@@ -116,33 +117,33 @@ def validate_kernels(args):
     bodies = set()
     epochs = []
     
-    if hasattr(args, 'dep_start'):  # em-grid
-        bodies.update(['399', '499'])
+    if hasattr(args, 'dep_start'):  # transfer-grid
+        bodies.update([args.dep_body, args.arr_body])
         dep_start = Time(args.dep_start, scale=args.time_scale.lower())
         dep_end = Time(args.dep_end, scale=args.time_scale.lower())
         arr_start = dep_start + args.tof_min * u.day
         arr_end = dep_end + args.tof_max * u.day
         epochs.extend([dep_start, dep_end, arr_start, arr_end])
     elif hasattr(args, 'epoch'):  # flyby
-        bodies.update(['499'])
+        bodies.update([args.planet_id])
         epoch = Time(args.epoch, scale=args.time_scale.lower())
         epochs.append(epoch)
-    elif hasattr(args, 'dep_epoch'):  # mc-screen
-        bodies.update([args.dep_id, args.arr_id])
+    elif hasattr(args, 'dep_epoch'):  # transfer-screen
+        bodies.update([args.dep_body, args.arr_body])
         dep_epoch = Time(args.dep_epoch, scale=args.time_scale.lower())
         arr_start, arr_end = args.arr_window.split(':')
         arr_start = Time(arr_start, scale=args.time_scale.lower())
         arr_end = Time(arr_end, scale=args.time_scale.lower())
         epochs.extend([dep_epoch, arr_start, arr_end])
-    elif hasattr(args, 'em_dep_start'):  # emc-chain
-        bodies.update(['399', '499', '20000001'])
-        dep_start = Time(args.em_dep_start, scale=args.time_scale.lower())
-        dep_end = Time(args.em_dep_end, scale=args.time_scale.lower())
-        arr_start = dep_start + args.em_tof_min * u.day
-        arr_end = dep_end + args.em_tof_max * u.day
-        mc_arr_start = arr_start + args.mc_tof_min * u.day
-        mc_arr_end = arr_end + args.mc_tof_max * u.day
-        epochs.extend([dep_start, dep_end, arr_start, arr_end, mc_arr_start, mc_arr_end])
+    elif hasattr(args, 'dep_start') and hasattr(args, 'flyby_body'):  # transfer-chain
+        bodies.update([args.dep_body, args.flyby_body, args.arr_body])
+        dep_start = Time(args.dep_start, scale=args.time_scale.lower())
+        dep_end = Time(args.dep_end, scale=args.time_scale.lower())
+        arr_start = dep_start + args.leg1_tof_min * u.day
+        arr_end = dep_end + args.leg1_tof_max * u.day
+        leg2_arr_start = arr_start + args.leg2_tof_min * u.day
+        leg2_arr_end = arr_end + args.leg2_tof_max * u.day
+        epochs.extend([dep_start, dep_end, arr_start, arr_end, leg2_arr_start, leg2_arr_end])
     
     # Check SPK coverage - temporarily disabled for de440.bsp
     # for body in bodies:
@@ -163,7 +164,7 @@ def validate_kernels(args):
     #         logger.exception(f"SPK coverage check failed for {body}: {e}")
 
 
-def run_em_grid(args):
+def run_transfer_grid(args):
     # Load kernels
     if args.kernels:
         load_kernels(args.kernels)
@@ -185,7 +186,7 @@ def run_em_grid(args):
     echo_time_scale_conversion(args.dep_end, args.time_scale, dep_end)
     
     dep_times, tof_days, c3_grid, vout_x, vout_y, vout_z, vin_x, vin_y, vin_z, vM_x, vM_y, vM_z, rM_x, rM_y, rM_z = \
-        screen_em_grid_cached(dep_start, dep_end, args.dep_step, args.tof_min, args.tof_max, args.tof_step, dep_body=str(args.dep_id), arr_body=str(args.arr_id), n_workers=args.workers)
+        screen_transfer_grid_cached(dep_start, dep_end, args.dep_step, args.tof_min, args.tof_max, dep_body=args.dep_body, arr_body=args.arr_body, n_workers=args.workers)
 
     # Guardrails: Compute array hash for reproducibility
     compute_array_hash(c3_grid, 'c3_grid')
@@ -211,7 +212,9 @@ def run_em_grid(args):
             'tof_count': int(len(tof_days)),
             'c3_min': float(min_c3) if np.isfinite(min_c3) else None,
             'frame': args.frame,
-            'time_scale': args.time_scale
+            'time_scale': args.time_scale,
+            'dep_body': args.dep_body,
+            'arr_body': args.arr_body
         }
         print(json.dumps(out, indent=2))
     elif args.format in ['table', 'csv']:
@@ -242,8 +245,8 @@ def run_em_grid(args):
     # Save
     if args.save:
         Path(args.outdir).mkdir(parents=True, exist_ok=True)
-        # em_grid.csv
-        csv_path = os.path.join(args.outdir, 'em_grid.csv')
+        # transfer_grid.csv
+        csv_path = os.path.join(args.outdir, 'transfer_grid.csv')
         with open(csv_path, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['dep_tdb', 'tof_days', 'c3', 'vinf_in_x', 'vinf_in_y', 'vinf_in_z', 'vinf_out_x', 'vinf_out_y', 'vinf_out_z', 'arr_tdb', 'dep_idx', 'tof_idx'])
@@ -260,7 +263,7 @@ def run_em_grid(args):
                             arr_epoch.tdb.isot,
                             i, j
                         ])
-        # em_minima.json
+        # transfer_minima.json
         min_data = {
             'dep_tdb': min_dep_epoch.tdb.isot,
             'tof_days': float(tof_days[jtof]),
@@ -268,9 +271,11 @@ def run_em_grid(args):
             'vinf_in_vec_kms': min_vinf_in,
             'vinf_out_vec_kms': min_vinf_out,
             'arr_tdb': min_arr_epoch.tdb.isot,
+            'dep_body': args.dep_body,
+            'arr_body': args.arr_body
         }
         min_data['hash'] = hashlib.sha256(json.dumps(min_data, sort_keys=True).encode()).hexdigest()
-        min_path = os.path.join(args.outdir, 'em_minima.json')
+        min_path = os.path.join(args.outdir, 'transfer_minima.json')
         with open(min_path, 'w') as f:
             json.dump([min_data], f, indent=2)
         
@@ -384,7 +389,28 @@ def run_flyby(args):
             json.dump(data, f, indent=2)
 
 
-def run_mc_screen(args):
+def run_transfer_screen(args):
+    """
+    Run generic transfer screening: evaluate v∞ requirements at intermediate body.
+    
+    This function computes the required outbound v∞ at a departure body needed to reach 
+    an arrival body within a specified time-of-flight window. It's useful for:
+    - Screening flyby trajectories to identify feasible geometry
+    - Computing v∞ requirements for gravity assist maneuvers
+    - Identifying optimal departure/arrival time pairs
+    
+    The screening evaluates all TOF values within the specified range and filters results
+    based on the arrival time window and optional C3 cap.
+    
+    Args:
+        args: Command-line arguments containing:
+            - dep_epoch: Fixed departure epoch (e.g., "2025-06-01")
+            - arr_window: Arrival time window as "start:end" (e.g., "2025-10-01:2026-02-01")
+            - tof_min/tof_max/tof_step: Time-of-flight range in days
+            - dep_body: Departure body NAIF ID
+            - arr_body: Arrival body NAIF ID
+            - c3_cap: Optional C3 limit (km²/s²)
+    """
     # Load kernels
     if args.kernels:
         load_kernels(args.kernels)
@@ -411,12 +437,12 @@ def run_mc_screen(args):
     tof_days = np.arange(args.tof_min, args.tof_max + args.tof_step, args.tof_step)
     table_data = []
     for i, tof in enumerate(tof_days):
-        progress_bar(i+1, len(tof_days), 'mc-screen')
+        progress_bar(i+1, len(tof_days), 'transfer-screen')
         arr_epoch = dep_epoch + tof * u.day
         if arr_epoch < arr_start or arr_epoch > arr_end:
             continue
-        r_dep, v_dep = rv_helio_spice(str(args.dep_id), dep_epoch)
-        r_arr, v_arr = rv_helio_spice(str(args.arr_id), arr_epoch)
+        r_dep, v_dep = rv_helio_spice(args.dep_body, dep_epoch)
+        r_arr, v_arr = rv_helio_spice(args.arr_body, arr_epoch)
         v1, v2 = solve_leg(r_dep * u.km, r_arr * u.km, tof * u.day)
         vinf_arr = (v2 - v_arr * u.km/u.s).to(u.km/u.s).value
         c3 = float(np.dot(vinf_arr, vinf_arr))
@@ -431,34 +457,11 @@ def run_mc_screen(args):
             i   # tof_idx
         ]
         table_data.append(row)
-    progress_bar(len(tof_days), len(tof_days), 'mc-screen')
+    progress_bar(len(tof_days), len(tof_days), 'transfer-screen')
     
     # Guardrails: Compute array hash for reproducibility (on c3 values)
     c3_values = np.array([row[2] for row in table_data])
     compute_array_hash(c3_values, 'c3_values')
-    table_data = []
-    for i, tof in enumerate(tof_days):
-        progress_bar(i+1, len(tof_days), 'mc-screen')
-        arr_epoch = dep_epoch + tof * u.day
-        if arr_epoch < arr_start or arr_epoch > arr_end:
-            continue
-        r_dep, v_dep = rv_helio_spice(str(args.dep_id), dep_epoch)
-        r_arr, v_arr = rv_helio_spice(str(args.arr_id), arr_epoch)
-        v1, v2 = solve_leg(r_dep * u.km, r_arr * u.km, tof * u.day)
-        vinf_arr = (v2 - v_arr * u.km/u.s).to(u.km/u.s).value
-        c3 = float(np.dot(vinf_arr, vinf_arr))
-        if args.c3_cap is not None and c3 > args.c3_cap:
-            continue
-        row = [
-            dep_epoch.tdb.isot,
-            float(tof),
-            c3,
-            arr_epoch.tdb.isot,
-            0,  # dep_idx
-            i   # tof_idx
-        ]
-        table_data.append(row)
-    progress_bar(len(tof_days), len(tof_days), 'mc-screen')
     
     # Stdout
     if args.format == 'json':
@@ -466,7 +469,9 @@ def run_mc_screen(args):
             'c3_cap': args.c3_cap,
             'results': table_data,
             'frame': args.frame,
-            'time_scale': args.time_scale
+            'time_scale': args.time_scale,
+            'dep_body': args.dep_body,
+            'arr_body': args.arr_body
         }
         print(json.dumps(data, indent=2))
     elif args.format == 'table':
@@ -482,14 +487,14 @@ def run_mc_screen(args):
     # Save
     if args.save:
         Path(args.outdir).mkdir(parents=True, exist_ok=True)
-        # mc_grid.csv
-        csv_path = os.path.join(args.outdir, 'mc_grid.csv')
+        # transfer_grid.csv
+        csv_path = os.path.join(args.outdir, 'transfer_grid.csv')
         with open(csv_path, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['dep_tdb', 'tof_days', 'c3', 'arr_tdb', 'dep_idx', 'tof_idx'])
             for row in table_data:
                 writer.writerow(row)
-        # mc_minima.json
+        # transfer_minima.json
         if table_data:
             min_row = min(table_data, key=lambda x: x[2] if x[2] is not None else float('inf'))
             min_data = {
@@ -499,14 +504,16 @@ def run_mc_screen(args):
                 'vinf_in_vec_kms': None,
                 'vinf_out_vec_kms': None,
                 'arr_tdb': min_row[3],
+                'dep_body': args.dep_body,
+                'arr_body': args.arr_body
             }
             min_data['hash'] = hashlib.sha256(json.dumps(min_data, sort_keys=True).encode()).hexdigest()
-            min_path = os.path.join(args.outdir, 'mc_minima.json')
+            min_path = os.path.join(args.outdir, 'transfer_minima.json')
             with open(min_path, 'w') as f:
                 json.dump([min_data], f, indent=2)
 
 
-def run_emc_chain(args):
+def run_transfer_chain(args):
     # Guardrails: Check mock usage first (before kernel loading)
     physics_incomplete = check_mock_usage(args)
     if physics_incomplete and not args.allow_mock:
@@ -522,19 +529,19 @@ def run_emc_chain(args):
     # Validate
     validate_kernels(args)
     
-    # Compute EM grid
-    dep_start = Time(args.em_dep_start, scale=args.time_scale.lower())
-    dep_end = Time(args.em_dep_end, scale=args.time_scale.lower())
+    # Compute first leg grid
+    dep_start = Time(args.dep_start, scale=args.time_scale.lower())
+    dep_end = Time(args.dep_end, scale=args.time_scale.lower())
     
     # Guardrails: Echo time scale conversion
-    echo_time_scale_conversion(args.em_dep_start, args.time_scale, dep_start)
-    echo_time_scale_conversion(args.em_dep_end, args.time_scale, dep_end)
+    echo_time_scale_conversion(args.dep_start, args.time_scale, dep_start)
+    echo_time_scale_conversion(args.dep_end, args.time_scale, dep_end)
     
     dep_times, tof_days, c3_grid, vout_x, vout_y, vout_z, vin_x, vin_y, vin_z, vM_x, vM_y, vM_z, rM_x, rM_y, rM_z = \
-        screen_em_grid_cached(dep_start, dep_end, args.em_dep_step, args.em_tof_min, args.em_tof_max, args.em_tof_step, dep_body='399', arr_body='499', n_workers=args.workers)
+        screen_transfer_grid_cached(dep_start, dep_end, args.dep_step, args.leg1_tof_min, args.leg1_tof_max, args.leg1_tof_step, dep_body=args.dep_body, arr_body=args.flyby_body, n_workers=args.workers)
 
-    # Guardrails: Compute array hash for EM grid
-    compute_array_hash(c3_grid, 'em_c3_grid')
+    # Guardrails: Compute array hash for first leg grid
+    compute_array_hash(c3_grid, 'leg1_c3_grid')
 
     # Find N best candidates
     flat_indices = np.argsort(c3_grid.flatten())[:args.candidates]
@@ -551,7 +558,7 @@ def run_emc_chain(args):
         dep_epoch = dep_times[idep]
         tof_val = tof_days[jtof]
         arr_epoch = dep_epoch + tof_val * u.day
-        c3_em = c3_grid[idep, jtof]
+        c3_leg1 = c3_grid[idep, jtof]
         rM = np.array([rM_x[idep, jtof], rM_y[idep, jtof], rM_z[idep, jtof]])
         vM = np.array([vM_x[idep, jtof], vM_y[idep, jtof], vM_z[idep, jtof]])
         vinf_in = np.array([vin_x[idep, jtof], vin_y[idep, jtof], vin_z[idep, jtof]])
@@ -564,8 +571,8 @@ def run_emc_chain(args):
         else:  # auto
             b_hat = np.array([0, 0, 1])  # placeholder
 
-        # Run flyby
-        fly = compute_flyby(arr_epoch.tdb, rM, vM, MU_MARS, vinf_in, (R_MARS + args.min_alt, R_MARS + 10000.0), '20000001', MU_SUN, (arr_epoch + 200*u.day, arr_epoch + 1000*u.day), max_samples=200, seed=args.seed or 42)
+        # Run flyby (using Mars constants for now - should be made generic)
+        fly = compute_flyby(arr_epoch.tdb, rM, vM, MU_MARS, vinf_in, (R_MARS + args.min_alt, R_MARS + 10000.0), args.arr_body, MU_SUN, (arr_epoch + 200*u.day, arr_epoch + 1000*u.day), max_samples=200, seed=args.seed or 42)
         if not fly.success:
             logger = logging.getLogger(__name__)
             logger.error('No feasible flyby given min altitude %s km; try higher v∞ or lower alt.', args.min_alt)
@@ -575,58 +582,61 @@ def run_emc_chain(args):
         turn_deg = np.degrees(fly.turn_angle) if fly.turn_angle is not None else None
         rp_km = fly.rp if fly.rp is not None else None
 
-        # Run MC screening
-        mc_tof_days = np.arange(args.mc_tof_min, args.mc_tof_max + args.mc_tof_step, args.mc_tof_step)
-        for i, mc_tof in enumerate(mc_tof_days):
-            progress_bar(i+1, len(mc_tof_days), 'emc-chain')
-            mc_arr_epoch = arr_epoch + mc_tof * u.day
-            r_dep, v_dep = rv_helio_spice('499', arr_epoch)  # Mars at flyby arrival
-            r_arr, v_arr = rv_helio_spice('20000001', mc_arr_epoch)
+        # Run second leg screening
+        leg2_tof_days = np.arange(args.leg2_tof_min, args.leg2_tof_max + args.leg2_tof_step, args.leg2_tof_step)
+        for i, leg2_tof in enumerate(leg2_tof_days):
+            progress_bar(i+1, len(leg2_tof_days), 'transfer-chain')
+            leg2_arr_epoch = arr_epoch + leg2_tof * u.day
+            r_dep, v_dep = rv_helio_spice(args.flyby_body, arr_epoch)  # flyby body at flyby arrival
+            r_arr, v_arr = rv_helio_spice(args.arr_body, leg2_arr_epoch)
             try:
-                v1, v2 = solve_leg(r_dep * u.km, r_arr * u.km, mc_tof * u.day)
+                v1, v2 = solve_leg(r_dep * u.km, r_arr * u.km, leg2_tof * u.day)
                 vinf_arr = (v2 - v_arr * u.km/u.s).to(u.km/u.s).value
-                c3_mc = float(np.dot(vinf_arr, vinf_arr))
+                c3_leg2 = float(np.dot(vinf_arr, vinf_arr))
                 success = True
             except:
-                c3_mc = None
+                c3_leg2 = None
                 success = False
 
             row = [
                 dep_epoch.tdb.isot,
                 float(tof_val),
-                float(c3_em),
+                float(c3_leg1),
                 float(vinf_in_mag),
                 float(turn_deg) if turn_deg is not None else None,
                 float(rp_km) if rp_km is not None else None,
                 arr_epoch.tdb.isot,
-                mc_arr_epoch.tdb.isot,
-                float(mc_tof),
-                float(c3_mc) if c3_mc is not None else None,
+                leg2_arr_epoch.tdb.isot,
+                float(leg2_tof),
+                float(c3_leg2) if c3_leg2 is not None else None,
                 success
             ]
             table_data.append(row)
 
             summary_data.append({
-                'em_dep': dep_epoch.tdb.isot,
-                'em_tof': float(tof_val),
-                'c3_em': float(c3_em),
+                'leg1_dep': dep_epoch.tdb.isot,
+                'leg1_tof': float(tof_val),
+                'c3_leg1': float(c3_leg1),
                 'vinf_in_mag': float(vinf_in_mag),
                 'turn_deg': float(turn_deg) if turn_deg is not None else None,
                 'rp_km': float(rp_km) if rp_km is not None else None,
-                'mc_dep': arr_epoch.tdb.isot,
-                'mc_arr': mc_arr_epoch.tdb.isot,
-                'mc_tof': float(mc_tof),
-                'c3_mc': float(c3_mc) if c3_mc is not None else None,
-                'success': success
+                'leg2_dep': arr_epoch.tdb.isot,
+                'leg2_arr': leg2_arr_epoch.tdb.isot,
+                'leg2_tof': float(leg2_tof),
+                'c3_leg2': float(c3_leg2) if c3_leg2 is not None else None,
+                'success': success,
+                'dep_body': args.dep_body,
+                'flyby_body': args.flyby_body,
+                'arr_body': args.arr_body
             })
-        progress_bar(len(mc_tof_days), len(mc_tof_days), 'emc-chain')
+        progress_bar(len(leg2_tof_days), len(leg2_tof_days), 'transfer-chain')
 
     # Guardrails: Compute array hash for final results
     if table_data:
-        c3_em_values = np.array([row[2] for row in table_data])
-        c3_mc_values = np.array([row[9] if row[9] is not None else np.nan for row in table_data])
-        compute_array_hash(c3_em_values, 'emc_c3_em')
-        compute_array_hash(c3_mc_values, 'emc_c3_mc')
+        c3_leg1_values = np.array([row[2] for row in table_data])
+        c3_leg2_values = np.array([row[9] if row[9] is not None else np.nan for row in table_data])
+        compute_array_hash(c3_leg1_values, 'chain_c3_leg1')
+        compute_array_hash(c3_leg2_values, 'chain_c3_leg2')
 
     # Export summary
     if args.export_summary:
@@ -637,7 +647,7 @@ def run_emc_chain(args):
     if args.export_csv:
         with open(args.export_csv, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['dep_tdb', 'em_tof', 'c3_em', 'vinf_in_mag', 'turn_deg', 'rp_km', 'mc_dep_tdb', 'mc_arr_tdb', 'mc_tof', 'c3_mc', 'success'])
+            writer.writerow(['dep_tdb', 'leg1_tof', 'c3_leg1', 'vinf_in_mag', 'turn_deg', 'rp_km', 'leg2_dep_tdb', 'leg2_arr_tdb', 'leg2_tof', 'c3_leg2', 'success'])
             for row in table_data:
                 writer.writerow(row)
 
@@ -646,24 +656,27 @@ def run_emc_chain(args):
         data = {
             'chains': summary_data,
             'frame': args.frame,
-            'time_scale': args.time_scale
+            'time_scale': args.time_scale,
+            'dep_body': args.dep_body,
+            'flyby_body': args.flyby_body,
+            'arr_body': args.arr_body
         }
         print(json.dumps(data, indent=2))
     elif args.format == 'table':
-        print('\t'.join(['dep_tdb', 'em_tof', 'c3_em', 'vinf_in_mag', 'turn_deg', 'rp_km', 'mc_dep_tdb', 'mc_arr_tdb', 'mc_tof', 'c3_mc', 'success']))
+        print('\t'.join(['dep_tdb', 'leg1_tof', 'c3_leg1', 'vinf_in_mag', 'turn_deg', 'rp_km', 'leg2_dep_tdb', 'leg2_arr_tdb', 'leg2_tof', 'c3_leg2', 'success']))
         for row in table_data:
             print('\t'.join(map(str, row)))
     elif args.format == 'csv':
         writer = csv.writer(sys.stdout)
-        writer.writerow(['dep_tdb', 'em_tof', 'c3_em', 'vinf_in_mag', 'turn_deg', 'rp_km', 'mc_dep_tdb', 'mc_arr_tdb', 'mc_tof', 'c3_mc', 'success'])
+        writer.writerow(['dep_tdb', 'leg1_tof', 'c3_leg1', 'vinf_in_mag', 'turn_deg', 'rp_km', 'leg2_dep_tdb', 'leg2_arr_tdb', 'leg2_tof', 'c3_leg2', 'success'])
         for row in table_data:
             writer.writerow(row)
 
     # Save
     if args.save:
         Path(args.outdir).mkdir(parents=True, exist_ok=True)
-        # emc_summary.json
-        summary_path = os.path.join(args.outdir, 'emc_summary.json')
+        # transfer_summary.json
+        summary_path = os.path.join(args.outdir, 'transfer_summary.json')
         with open(summary_path, 'w') as f:
             json.dump({'chains': summary_data}, f, indent=2)
 
@@ -734,6 +747,8 @@ def run_chain3_checkpointed_mode(args):
 
 def run_chain3_original(args):
     """Original (non-checkpointed) chain3 implementation."""
+    logger = logging.getLogger(__name__)
+    
     # Load kernels
     if args.kernels:
         load_kernels(args.kernels)

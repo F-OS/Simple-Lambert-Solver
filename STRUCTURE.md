@@ -17,11 +17,12 @@ src/lambertlab/
 │   ├── types.py          # Type definitions
 │   └── checkpoint.py     # Checkpoint system
 ├── flows/
-│   ├── em_only.py        # Earth-Mars transfers
-│   ├── flyby.py          # Gravity assist computations
-│   ├── emc_screen.py     # EMC screening
-│   ├── chain3_tiled.py   # Three-body chains
-│   └── validate_arc.py   # Trajectory validation
+│   ├── em_only.py           # Earth-Mars transfers (legacy, used by chain3)
+│   ├── transfer_grid.py     # Generic two-body transfer grids
+│   ├── transfer_requirements.py  # Generic v∞ requirements computation
+│   ├── flyby.py             # Gravity assist computations
+│   ├── chain3_tiled.py      # Three-body chains
+│   └── validate_arc.py      # Trajectory validation
 └── viz/
     ├── ui.py             # UI logic for all commands
     ├── porkchop.py       # Porkchop plot generation
@@ -148,8 +149,19 @@ pytest tests/test_01_lambert_core.py tests/test_02_flyby_physics.py \
 - **Matplotlib** - Plotting and visualization
 - **Typer/Rich** - CLI framework and terminal UI
 
+## Documentation
+
+### User Guides
+- **`README.md`** - Quick start, installation, and basic usage
+- **`docs/TRANSFER_SCREENING.md`** - Complete guide to transfer screening functionality
+- **`STRUCTURE.md`** - This file: repository structure and organization
+
+### Developer Docs
+- **`CHECKPOINT_SYSTEM.md`** - Resumable computation system
+- **`tests/README.md`** - Testing framework and test organization
+
 ---
 
-**Last Updated:** October 9, 2025  
+**Last Updated:** October 13, 2025  
 **Branch:** Flyby-Solver  
 **Status:** Production Ready ✅

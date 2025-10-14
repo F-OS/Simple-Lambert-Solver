@@ -4,12 +4,13 @@ A comprehensive tool for Lambert solver calculations with SPICE integration for 
 
 ## Features
 
-- Earth-Mars porkchop plot generation
-- Flyby trajectory optimization
-- Multi-body trajectory screening
-- SPICE kernel integration for accurate ephemerides
-- Command-line interface with multiple subcommands
-- Reproducible results with array hashing
+- **Two-Body Transfer Grid (Porkchop Plots)**: Generate comprehensive departure/arrival grids showing C3 contours for optimal launch windows
+- **Transfer Screening**: Evaluate v∞ requirements for specific departure dates across time-of-flight ranges
+- **Flyby Optimization**: Compute gravity assist trajectories with B-plane targeting
+- **Three-Body Chains**: Find optimal gravity assist sequences through intermediate bodies
+- **SPICE Integration**: Accurate ephemerides using NASA's SPICE toolkit
+- **Command-Line Interface**: Multiple subcommands for different trajectory analysis modes
+- **Reproducible Results**: Array hashing and checkpointing for computational integrity
 
 ## Installation
 
@@ -46,6 +47,12 @@ python -m lambertlab.cli.main em-grid [options]  # For command-line
 
 If you see `ModuleNotFoundError: No module named 'lambertlab'` or missing porkchop plots, you're likely in the wrong environment!
 
+## Documentation
+
+- **[Transfer Screening Guide](docs/TRANSFER_SCREENING.md)** - Comprehensive guide to v∞ screening functionality
+- **[Repository Structure](STRUCTURE.md)** - Directory organization and module layout
+- **[Checkpoint System](CHECKPOINT_SYSTEM.md)** - Resumable computation details
+
 ## Usage
 
 ### Quick Start: Earth-Mars Transfer (2035-2037 Window)
@@ -60,16 +67,113 @@ python run.py
 
 ### Command-Line Examples
 
+#### 1. Two-Body Transfer Grid (Porkchop Plot)
+Generate a comprehensive departure/arrival grid showing C3 contours:
+
 ```bash
-# Generate Earth-Mars porkchop plot
-lambertlab em-grid --kernels data/kernels/*.bsp --dep-start 2035-01-01 --dep-end 2038-01-01 --tof-min 200 --tof-max 600
-
-# Optimize flyby trajectory
-lambertlab flyby --kernels data/kernels/*.bsp --epoch 2025-06-01 --vinf-in 5.0 0.0 0.0
-
-# Screen multi-body trajectories
-lambertlab mc-screen --kernels data/kernels/*.bsp --dep-epoch 2025-01-01 --arr-window 2025-04-01:2025-08-01
+lambertlab transfer-grid \
+  --kernels data/kernels/*.bsp \
+  --dep-start 2035-01-01 --dep-end 2035-09-01 --dep-step 3 \
+  --tof-min 200 --tof-max 600 --tof-step 10 \
+  --dep-body 399 --arr-body 499 \
+  --save
 ```
+
+This creates a porkchop plot showing launch C3 for Earth→Mars transfers.
+
+#### 2. Transfer Screening
+Screen v∞ requirements for a fixed departure date across multiple arrival windows:
+
+```bash
+lambertlab transfer-screen \
+  --kernels data/kernels/*.bsp \
+  --dep-epoch 2025-06-01 \
+  --arr-window 2025-10-01:2026-02-01 \
+  --tof-min 150 --tof-max 400 --tof-step 5 \
+  --dep-body 499 --arr-body 20000001 \
+  --c3-cap 50.0 \
+  --save
+```
+
+**What it does:**
+- Fixes departure at Mars on 2025-06-01
+- Evaluates all TOF values (150-400 days in 5-day steps)
+- Filters to arrivals at Ceres between 2025-10-01 and 2026-02-01
+- Computes required C3 (v∞²) for each feasible trajectory
+- Filters out trajectories exceeding C3 = 50 km²/s²
+
+**Use cases:**
+- Screening flyby opportunities after a fixed planetary encounter
+- Computing v∞ requirements for gravity assist design
+- Identifying optimal TOF for constrained departure dates
+
+#### 3. Flyby Trajectory Optimization
+Optimize a gravity assist maneuver with B-plane targeting:
+
+```bash
+lambertlab flyby \
+  --kernels data/kernels/*.bsp \
+  --epoch 2025-06-01 \
+  --planet-id 499 --target-id 20000001 \
+  --r-body 3396 --alt-min 300 \
+  --vinf-in 5.0 0.0 0.0 \
+  --save
+```
+
+#### 4. Three-Body Chain (Gravity Assist Sequence)
+Find optimal Earth→Mars→Ceres trajectories with gravity assist:
+
+```bash
+lambertlab chain3 \
+  --kernels data/kernels/*.bsp \
+  --dep-body 399 --flyby-body 499 --arr-body 20000001 \
+  --dep-window 2025-01-01:2025-06-01 --dep-step 3 \
+  --leg1-tof 150:300:5 --leg2-tof 200:500:10 \
+  --rp-bounds 3696:10000 \
+  --checkpoint --tile-size 10 \
+  --save
+```
+
+## CLI Commands Reference
+
+### `transfer-grid`
+Generate two-body transfer grids (porkchop plots) showing C3 contours across departure/TOF space.
+
+**Key Parameters:**
+- `--dep-start/--dep-end/--dep-step`: Departure window and step size (days)
+- `--tof-min/--tof-max/--tof-step`: Time-of-flight range (days)
+- `--dep-body/--arr-body`: NAIF IDs for departure/arrival bodies
+- `--c3-cap`: Optional C3 limit for filtering trajectories
+
+### `transfer-screen`
+Screen v∞ requirements for a fixed departure date across TOF/arrival windows.
+
+**Key Parameters:**
+- `--dep-epoch`: Fixed departure date (ISO format: YYYY-MM-DD)
+- `--arr-window`: Arrival time window as "start:end"
+- `--tof-min/--tof-max/--tof-step`: Time-of-flight search range
+- `--c3-cap`: Optional C3 limit (km²/s²)
+
+**Typical Use:** After identifying a good departure opportunity from a porkchop plot, use screening to evaluate continuation legs to other destinations.
+
+### `flyby`
+Compute gravity assist flyby trajectories with B-plane targeting.
+
+**Key Parameters:**
+- `--epoch`: Flyby epoch
+- `--planet-id/--target-id`: Flyby body and post-flyby target
+- `--vinf-in`: Incoming v∞ vector (3 components, km/s)
+- `--rp/--alt-min`: Periapsis radius or minimum altitude (km)
+
+### `chain3`
+Find optimal three-body gravity assist sequences.
+
+**Key Parameters:**
+- `--dep-body/--flyby-body/--arr-body`: NAIF IDs for origin/flyby/destination
+- `--dep-window`: Departure time window
+- `--leg1-tof/--leg2-tof`: TOF ranges as "min:max:step"
+- `--rp-bounds`: Flyby periapsis range as "min:max" (km)
+- `--checkpoint`: Enable resumable checkpointed computation
 
 ## Project Structure
 
