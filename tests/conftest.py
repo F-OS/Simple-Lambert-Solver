@@ -13,11 +13,10 @@ Test Structure:
 All tests use realistic values and validate physics constraints.
 """
 
-import pytest
-import numpy as np
 from pathlib import Path
-from astropy import units as u
-from astropy.time import Time
+
+import numpy as np
+import pytest
 
 # Test data paths
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -71,7 +70,6 @@ def pykep_available():
     """Check if PyKEP is available."""
     try:
         import pykep as pk
-        version = pk.__version__
         return True
     except ImportError:
         pytest.skip("PyKEP not available - run 'conda activate lambertlab'")

@@ -6,9 +6,8 @@ Unit tests for PyKEP Lambert solver integration.
 Validates realistic Earth-Mars transfers with known good parameters.
 """
 
-import pytest
 import numpy as np
-from astropy import units as u
+import pytest
 from astropy.time import Time
 
 
@@ -36,8 +35,8 @@ class TestLambertSolver:
         # V-infinity should be reasonable
         vinf_dep_mag = np.linalg.norm(vinf_dep)
         vinf_arr_mag = np.linalg.norm(vinf_arr)
-        assert vinf_dep_mag > 0 and vinf_dep_mag < 50, "Departure v_inf must be reasonable"
-        assert vinf_arr_mag > 0 and vinf_arr_mag < 50, "Arrival v_inf must be reasonable"
+        assert 0 < vinf_dep_mag < 50, "Departure v_inf must be reasonable"
+        assert 0 < vinf_arr_mag < 50, "Arrival v_inf must be reasonable"
         
         # C3 should match departure v_inf squared
         c3_check = vinf_dep_mag**2
@@ -78,7 +77,7 @@ class TestLambertSolver:
         
         # Just verify it completes and gives reasonable values
         assert tof_days > 200, "Long transfer should have sufficient TOF"
-        assert c3 > 0 and c3 < 1000, "C3 should be positive and finite"
+        assert 0 < c3 < 1000, "C3 should be positive and finite"
         
         print(f"✅ Long transfer: TOF={tof_days:.1f}d, C3={c3:.2f}km²/s²")
     

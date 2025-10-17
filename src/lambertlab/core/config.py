@@ -1,6 +1,5 @@
 """Configuration and constants for LambertLab."""
 
-import os
 from pathlib import Path
 
 # Default paths

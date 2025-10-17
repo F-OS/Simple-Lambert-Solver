@@ -7,15 +7,16 @@ Provides:
 When run as a script, it prints results for an example pair.
 """
 
+import logging
+from typing import Tuple, Union
+
 import numpy as np
-import spiceypy as sp
 import pykep as pk
+import spiceypy as sp
 from astropy import units as u
 from astropy.time import Time
-from typing import Tuple, Union
-from .config import DEFAULT_KERNELS
+
 from .spice_io import load_kernels
-import logging
 
 # PyKEP constants
 MU_SUN_KM3S2 = 1.32712440018e11  # km^3/s^2 (Sun's gravitational parameter)
@@ -67,8 +68,7 @@ def compute_c3_tof(dep_time: Union[str, Time], arr_time: Union[str, Time],
     tof = (arr_t - dep_t)
 
     # Try all branches and pick minimum C3
-    res = best_lambert_branch(r_dep, v_dep_planet, r_arr, v_arr_planet, tof,
-                              rtol=1e-10, prograde=prograde, lowpath=lowpath)
+    res = best_lambert_branch(r_dep, v_dep_planet, r_arr, tof)
     if res is None:
         raise RuntimeError("No M=0 Lambert solution found for this dep/arr pair")
 
@@ -86,8 +86,7 @@ def compute_c3_tof(dep_time: Union[str, Time], arr_time: Union[str, Time],
     return tof_days, float(min_C3), v_inf_dep, v_inf_arr, used
 
 
-def best_lambert_branch(r_dep, v_dep_planet, r_arr, v_arr_planet, tof, rtol=1e-10,
-                        prograde: Union[bool, None] = None, lowpath: Union[bool, None] = None):
+def best_lambert_branch(r_dep, v_dep_planet, r_arr, tof):
     """
     Try all M=0 Lambert branches and return (min_C3, v_dep_best, v_arr_best, used_tuple)
     used_tuple = (M, prograde, lowpath). Returns None if no branch converged.

@@ -133,7 +133,6 @@ def select_saved_config(sim_type=None):
         try:
             config = load_test_config(config_path)
             sim_type_str = config.get('simulation_type', 'unknown')
-            timestamp = config.get('timestamp', '')
             print(f"{i}. {filename} ({sim_type_str})")
         except:
             print(f"{i}. {filename}")
@@ -298,10 +297,10 @@ def get_body_params(naif_id_str):
             # Try to get GM from SPICE
             try:
                 gm = sp.bodvrd(naif_id_str, 'GM', 1)[1][0]
-                return (radius, gm, name)
+                return radius, gm, name
             except:
                 # Return None for mu if not available
-                return (radius, None, name)
+                return radius, None, name
         except:
             return None
 

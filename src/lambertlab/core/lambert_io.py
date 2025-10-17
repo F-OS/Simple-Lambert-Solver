@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Tuple, Union, Optional
+import ctypes
+import logging
+from typing import Tuple, Optional
+
 import numpy as np
 import pykep as pk
 from astropy import units as u
-import logging
 
 from .types import Vec, KM, KMS, C3_TOL
 
@@ -72,11 +74,7 @@ def best_lambert_branch(
     r_dep: Vec,
     v_dep_planet: Vec,
     r_arr: Vec,
-    v_arr_planet: Vec,
-    tof: u.Quantity,
-    rtol: float = 1e-10,
-    prograde: Optional[bool] = None,
-    lowpath: Optional[bool] = None,
+        tof: u.Quantity,
 ) -> Optional[Tuple[float, Vec, Vec, Tuple[int, bool, bool]]]:
     """
     Try all M=0 Lambert branches and return (min_C3, v_dep_best, v_arr_best, used_tuple)
@@ -101,57 +99,144 @@ def best_lambert_branch(
         # Convert to plain arrays and seconds
         r_dep_km = np.asarray(r_dep, dtype=float)
         r_arr_km = np.asarray(r_arr, dtype=float)
+        v_dep_planet_km = np.asarray(v_dep_planet, dtype=float)
         tof_sec = tof.to_value(u.second)
-        
-        # PyKEP Lambert problem (0 revolutions)
-        # Note: PyKEP automatically finds both cw and ccw solutions
-        lp = pk.lambert_problem(
-            r_dep_km.tolist(),
-            r_arr_km.tolist(),
-            tof_sec,
-            MU_SUN_KM3S2,
-            cw=False,  # Counter-clockwise (prograde in solar system)
-            max_revs=0  # Direct transfer only
-        )
-        
-        # Get number of solutions (use len() not get_Nmax())
-        n_sol = len(lp.get_v1())
-        if n_sol == 0:
-            return None
-        
-        # Try all solutions and find minimum C3
-        min_C3 = float("inf")
-        best = None
-        
-        for i in range(n_sol):
-            v_dep_kms = np.array(lp.get_v1()[i])
-            v_arr_kms = np.array(lp.get_v2()[i])
-            
-            # Skip NaN solutions
-            if not np.all(np.isfinite(v_dep_kms)) or not np.all(np.isfinite(v_arr_kms)):
-                continue
-            
-            # Compute v_inf relative to planet velocity
-            v_inf_dep = v_dep_kms - v_dep_planet
-            C3 = float(np.dot(v_inf_dep, v_inf_dep))
-            
-            if C3 < min_C3:
-                min_C3 = C3
-                # Store as (C3, v_dep, v_arr, (M, prograde, lowpath))
-                # prograde/lowpath are legacy from poliastro, not used by PyKEP
-                best = (min_C3, v_dep_kms, v_arr_kms, (0, True, True))
-
-        # Guard: internal consistency check
-        if best is not None:
-            C3_val, v_dep_best, v_arr_best, used = best
-            vinf_dep = v_dep_best - v_dep_planet
-            if (not np.isfinite(C3_val)) or (abs(np.linalg.norm(vinf_dep) - np.sqrt(C3_val)) > C3_TOL):
-                logger = logging.getLogger(__name__)
-                logger.warning('C3 consistency check failed for TOF %.1f days', tof_days)
-                return None
-
-        return best
+        return _best_lambert_branch_internal_ffi(r_dep_km, v_dep_planet_km, r_arr_km, tof_sec)
     except Exception as e:
         logger = logging.getLogger(__name__)
         logger.exception('Lambert solve failed for TOF %.1f days: %s', tof_days, e)
         return None
+
+def _best_lambert_branch_internal(
+    r_dep_km: np.ndarray,
+    v_dep_planet: np.ndarray,
+    r_arr_km: np.ndarray,
+    tof_sec: float,
+) -> Optional[Tuple[float, Vec, Vec, Tuple[int, bool, bool]]]:
+    # PyKEP Lambert problem (0 revolutions)
+    # Note: PyKEP automatically finds both cw and ccw solutions
+    lp = pk.lambert_problem(
+        r_dep_km.tolist(),
+        r_arr_km.tolist(),
+        tof_sec,
+        MU_SUN_KM3S2,
+        cw=False,  # Counter-clockwise (prograde in solar system)
+        max_revs=0  # Direct transfer only
+    )
+
+    # Get number of solutions (use len() not get_Nmax())
+    n_sol = len(lp.get_v1())
+    if n_sol == 0:
+        return None
+
+    # Try all solutions and find minimum C3
+    min_C3 = float("inf")
+    best = None
+
+    for i in range(n_sol):
+        v_dep_kms = np.array(lp.get_v1()[i])
+        v_arr_kms = np.array(lp.get_v2()[i])
+
+        # Skip NaN solutions
+        if not np.all(np.isfinite(v_dep_kms)) or not np.all(np.isfinite(v_arr_kms)):
+            continue
+
+        # Compute v_inf relative to planet velocity
+        v_inf_dep = v_dep_kms - v_dep_planet
+        C3 = float(np.dot(v_inf_dep, v_inf_dep))
+
+        if C3 < min_C3:
+            min_C3 = C3
+            # Store as (C3, v_dep, v_arr, (M, prograde, lowpath))
+            # prograde/lowpath are legacy from poliastro, not used by PyKEP
+            best = (min_C3, v_dep_kms, v_arr_kms, (0, True, True))
+
+    # Guard: internal consistency check
+    if best is not None:
+        C3_val, v_dep_best, v_arr_best, used = best
+        vinf_dep = v_dep_best - v_dep_planet
+        if (not np.isfinite(C3_val)) or (abs(np.linalg.norm(vinf_dep) - np.sqrt(C3_val)) > C3_TOL):
+            logger = logging.getLogger(__name__)
+            logger.warning('C3 consistency check failed for TOF %.1f days', tof_sec / 86400.0)
+            return None
+
+    return best
+
+
+lib = None  # Loaded C library handle
+
+def _best_lambert_branch_internal_ffi(
+    r_dep_km: np.ndarray,
+    v_dep_planet: np.ndarray,
+    r_arr_km: np.ndarray,
+    tof_sec: float,
+) -> Optional[Tuple[float, np.ndarray, np.ndarray, Tuple[int, bool, bool]]]:
+    global lib
+    if r_dep_km.shape != (3,) or r_arr_km.shape != (3,) or v_dep_planet.shape != (3,):
+        raise ValueError("Input position and velocity vectors must be 3-dimensional.")
+    if r_dep_km.dtype != np.float64 or r_arr_km.dtype != np.float64 or v_dep_planet.dtype != np.float64:
+        raise ValueError("Input position and velocity vectors must be of type float64.")
+
+    # Prepare output pointers
+    out_float = ctypes.c_double()
+    out_vec1 = (ctypes.c_double * 3)()
+    out_vec2 = (ctypes.c_double * 3)()
+    out_int = ctypes.c_int()
+    out_bool1 = ctypes.c_bool()
+    out_bool2 = ctypes.c_bool()
+
+    # Convert numpy arrays to ctypes arrays
+    r_dep_ct = np.ctypeslib.as_ctypes(r_dep_km)
+    v_dep_planet_ct = np.ctypeslib.as_ctypes(v_dep_planet)
+    r_arr_ct = np.ctypeslib.as_ctypes(r_arr_km)
+
+    # Call the C function
+    try:
+        if lib is None:
+            lib = ctypes.CDLL('lambertsolver.so')
+
+            lib.best_lambert_branch_internal.argtypes = [
+                ctypes.POINTER(ctypes.c_double),  # r_dep_km (double[3])
+                ctypes.POINTER(ctypes.c_double),  # v_dep_planet_km (double[3])
+                ctypes.POINTER(ctypes.c_double),  # r_arr_km (double[3])
+                ctypes.c_double,  # tof_sec
+                ctypes.POINTER(ctypes.c_double),  # out_float
+                ctypes.POINTER(ctypes.c_double),  # out_vec1 (double[3])
+                ctypes.POINTER(ctypes.c_double),  # out_vec2 (double[3])
+                ctypes.POINTER(ctypes.c_int),  # out_int
+                ctypes.POINTER(ctypes.c_bool),  # out_bool1
+                ctypes.POINTER(ctypes.c_bool)  # out_bool2
+            ]
+            lib.best_lambert_branch_internal.restype = ctypes.c_int  # 0 on success, -1 on failure
+        result = lib.best_lambert_branch_internal(
+            r_dep_ct,
+            v_dep_planet_ct,
+            r_arr_ct,
+            tof_sec,
+            ctypes.byref(out_float),
+            out_vec1,
+            out_vec2,
+            ctypes.byref(out_int),
+            ctypes.byref(out_bool1),
+            ctypes.byref(out_bool2)
+        )
+    except FileNotFoundError:
+        return _best_lambert_branch_internal(
+            r_dep_km,
+            v_dep_planet,
+            r_arr_km,
+            tof_sec
+        )
+
+    if result != 0:
+        return None
+
+    # Convert outputs back to Python types
+    vec1 = np.ctypeslib.as_array(out_vec1)
+    vec2 = np.ctypeslib.as_array(out_vec2)
+    return (
+        out_float.value,
+        vec1.copy(),  # Copy to avoid reference issues
+        vec2.copy(),
+        (out_int.value, out_bool1.value, out_bool2.value)
+    )

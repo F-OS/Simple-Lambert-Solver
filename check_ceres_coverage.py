@@ -1,6 +1,5 @@
 """Check Ceres kernel coverage."""
 import spiceypy as sp
-import datetime
 
 # Load kernels
 sp.furnsh('data/kernels/naif0012.tls')

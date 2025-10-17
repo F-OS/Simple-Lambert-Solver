@@ -2,22 +2,21 @@
 
 from __future__ import annotations
 
-from typing import List, Tuple, Iterator
-import numpy as np
-from astropy.time import Time
-from astropy import units as u
+import logging
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
-import logging
+from typing import List, Tuple, Iterator
 
-from ..core.spice_io import load_kernels, rv_helio_spice, _to_time, StateCache, ensure_spice_loaded, _pool_initializer
-from ..core.lambert_io import best_lambert_branch, c3
-from ..core.config import AU
+import numpy as np
+from astropy import units as u
+from astropy.time import Time
+
+from ..core.lambert_io import best_lambert_branch
+from ..core.spice_io import rv_helio_spice, _to_time, StateCache, ensure_spice_loaded, _pool_initializer
 
 
 def _compute_grid_chunk(dep_times: List[Time], tof_days: np.ndarray, 
-                       dep_body: str, arr_body: str, use_mp: bool, n_workers: int, 
-                       kernel_paths: List[str] | None = None, use_threads: bool = False) -> dict:
+                       dep_body: str, arr_body: str) -> dict:
     """Compute grid chunk, either serially or in parallel."""
     n_dep = len(dep_times)
     n_tof = len(tof_days)
@@ -36,96 +35,43 @@ def _compute_grid_chunk(dep_times: List[Time], tof_days: np.ndarray,
     r_arr_x = np.full((n_dep, n_tof), np.nan)
     r_arr_y = np.full((n_dep, n_tof), np.nan)
     r_arr_z = np.full((n_dep, n_tof), np.nan)
+    # Serial computation with shared cache
+    cache = StateCache()
 
-    if use_mp:
-        # Parallel computation
-        logger = logging.getLogger(__name__)
-        logger.info('Computing grid using %d workers...', n_workers)
-        
-        # Create shared cache (this is tricky with multiprocessing, so we'll create per-worker caches)
-        # For now, each worker will create its own cache
-        
-        if use_threads:
-            from concurrent.futures import ThreadPoolExecutor
-            executor_class = ThreadPoolExecutor
-            executor_kwargs = {"max_workers": n_workers}
-        else:
-            executor_class = ProcessPoolExecutor
-            executor_kwargs = {
-                "max_workers": n_workers,
-                "initializer": _pool_initializer,
-                "initargs": (kernel_paths or [],),
-            }
-        
-        with executor_class(**executor_kwargs) as executor:
-            # Submit jobs for each departure time
-            futures = {}
-            for i, dep in enumerate(dep_times):
-                future = executor.submit(_compute_dep_row, dep, tof_days, dep_body, arr_body)
-                futures[future] = i
-            
-            # Collect results
-            for future in as_completed(futures):
-                i = futures[future]
-                try:
-                    row_results = future.result()
-                    for j, result in enumerate(row_results):
-                        if result is not None:
-                            c3_val, v_inf_dep, v_inf_arr, r_arr, v_arr_planet = result
-                            c3_grid[i, j] = c3_val
-                            vinf_out_x[i, j] = v_inf_dep[0]
-                            vinf_out_y[i, j] = v_inf_dep[1]
-                            vinf_out_z[i, j] = v_inf_dep[2]
-                            vinf_in_x[i, j] = v_inf_arr[0]
-                            vinf_in_y[i, j] = v_inf_arr[1]
-                            vinf_in_z[i, j] = v_inf_arr[2]
-                            v_arr_x[i, j] = v_arr_planet[0]
-                            v_arr_y[i, j] = v_arr_planet[1]
-                            v_arr_z[i, j] = v_arr_planet[2]
-                            r_arr_x[i, j] = r_arr[0]
-                            r_arr_y[i, j] = r_arr[1]
-                            r_arr_z[i, j] = r_arr[2]
-                except Exception as e:
-                    logger = logging.getLogger(__name__)
-                    logger.exception('Error processing departure time %s: %s', dep_times[i].isot, e)
-    else:
-        # Serial computation with shared cache
-        cache = StateCache()
-        
-        # Prefetch all required states
-        for dep in dep_times:
-            cache.get(dep_body, dep)
-        
-        for dep in dep_times:
-            for tof in tof_days:
+    # Prefetch all required states
+    for dep in dep_times:
+        cache.get(dep_body, dep)
+
+    for dep in dep_times:
+        for tof in tof_days:
+            arr = Time(dep.jd + tof, format='jd', scale='tdb')
+            cache.get(arr_body, arr)
+
+    logger = logging.getLogger(__name__)
+    logger.info('Prefetched %d state vectors', cache.size())
+
+    for i, dep in enumerate(dep_times):
+        for j, tof in enumerate(tof_days):
+            try:
                 arr = Time(dep.jd + tof, format='jd', scale='tdb')
-                cache.get(arr_body, arr)
-
-        logger = logging.getLogger(__name__)
-        logger.info('Prefetched %d state vectors', cache.size())
-
-        for i, dep in enumerate(dep_times):
-            for j, tof in enumerate(tof_days):
-                try:
-                    arr = Time(dep.jd + tof, format='jd', scale='tdb')
-                    _, c3_val, v_inf_dep, v_inf_arr, r_arr, v_arr_planet, _ = compute_transfer_c3_tof_cached(
-                        dep, arr, cache, dep_body=dep_body, arr_body=arr_body
-                    )
-                    c3_grid[i, j] = c3_val
-                    vinf_out_x[i, j] = v_inf_dep[0]
-                    vinf_out_y[i, j] = v_inf_dep[1]
-                    vinf_out_z[i, j] = v_inf_dep[2]
-                    vinf_in_x[i, j] = v_inf_arr[0]
-                    vinf_in_y[i, j] = v_inf_arr[1]
-                    vinf_in_z[i, j] = v_inf_arr[2]
-                    v_arr_x[i, j] = v_arr_planet[0]
-                    v_arr_y[i, j] = v_arr_planet[1]
-                    v_arr_z[i, j] = v_arr_planet[2]
-                    r_arr_x[i, j] = r_arr[0]
-                    r_arr_y[i, j] = r_arr[1]
-                    r_arr_z[i, j] = r_arr[2]
-                except Exception:
-                    continue  # Leave as NaN
+                _, c3_val, v_inf_dep, v_inf_arr, r_arr, v_arr_planet, _ = compute_transfer_c3_tof_cached(
+                    dep, arr, cache, dep_body=dep_body, arr_body=arr_body
+                )
+                c3_grid[i, j] = c3_val
+                vinf_out_x[i, j] = v_inf_dep[0]
+                vinf_out_y[i, j] = v_inf_dep[1]
+                vinf_out_z[i, j] = v_inf_dep[2]
+                vinf_in_x[i, j] = v_inf_arr[0]
+                vinf_in_y[i, j] = v_inf_arr[1]
+                vinf_in_z[i, j] = v_inf_arr[2]
+                v_arr_x[i, j] = v_arr_planet[0]
+                v_arr_y[i, j] = v_arr_planet[1]
+                v_arr_z[i, j] = v_arr_planet[2]
+                r_arr_x[i, j] = r_arr[0]
+                r_arr_y[i, j] = r_arr[1]
+                r_arr_z[i, j] = r_arr[2]
+            except Exception:
+                continue  # Leave as NaN
 
     return {
         'c3_grid': c3_grid,
@@ -231,8 +177,7 @@ def compute_transfer_c3_tof_cached(
 
     # Try Lambert branches
     res = best_lambert_branch(
-        r_dep, v_dep_planet, r_arr, v_arr_planet, tof,
-        rtol=1e-10, prograde=prograde, lowpath=lowpath
+        r_dep, v_dep_planet, r_arr, tof
     )
     if res is None:
         raise RuntimeError(f"No Lambert solution found for {dep_body} to {arr_body} transfer from {dep_t.isot} to {arr_t.isot} (TOF: {tof.to_value(u.day):.1f} days)")
@@ -273,8 +218,7 @@ def compute_transfer_c3_tof(
 
     # Try Lambert branches
     res = best_lambert_branch(
-        r_dep, v_dep_planet, r_arr, v_arr_planet, tof,
-        rtol=1e-10, prograde=prograde, lowpath=lowpath
+        r_dep, v_dep_planet, r_arr, tof
     )
     if res is None:
         raise RuntimeError(f"No Lambert solution found for {dep_body} to {arr_body} transfer from {dep_t.isot} to {arr_t.isot} (TOF: {tof.to_value(u.day):.1f} days)")
@@ -386,11 +330,7 @@ def screen_transfer_grid_cached(
         coarse_dep_step = max(1, dep_step_days * coarse_factor)
         coarse_tof_step = max(tof_step_days, coarse_factor * tof_step_days)
 
-        coarse_dep_times = Time(
-            np.arange(dep_start_t.jd, dep_end_t.jd + 1e-9, coarse_dep_step),
-            format='jd',
-            scale='tdb'
-        )
+        coarse_dep_times = List(Time(np.arange(dep_start_t.jd, dep_end_t.jd + 1e-9, coarse_dep_step), format='jd', scale='tdb'))
         coarse_tof_days = np.arange(tof_min_days, tof_max_days + 1, coarse_tof_step)
 
         logger = logging.getLogger(__name__)
@@ -398,7 +338,7 @@ def screen_transfer_grid_cached(
 
         # Compute coarse grid
         coarse_results = _compute_grid_chunk(
-            coarse_dep_times, coarse_tof_days, dep_body, arr_body, use_mp, actual_workers, kernel_paths, use_threads
+            coarse_dep_times, coarse_tof_days, dep_body, arr_body
         )
 
         # Find promising regions (C3 < some threshold)
@@ -422,7 +362,7 @@ def screen_transfer_grid_cached(
 
     # Compute the final grid
     results = _compute_grid_chunk(
-        dep_times, tof_days, dep_body, arr_body, use_mp, actual_workers, kernel_paths, use_threads
+        dep_times, tof_days, dep_body, arr_body
     )
 
     return (
@@ -434,7 +374,7 @@ def screen_transfer_grid_cached(
     )
 
 
-def grid_transfer(dep_start, dep_end, dep_step_d, tof_min_d, tof_max_d, tof_step_d, dep_body="399", arr_body="499") -> Iterator[Tuple[Time, Time]]:
+def grid_transfer(dep_start, dep_end, dep_step_d, tof_min_d, tof_max_d, tof_step_d) -> Iterator[Tuple[Time, Time]]:
     """Generate (t_dep, t_arr) pairs for transfer grid."""
     dep_start_t = _to_time(dep_start)
     dep_end_t = _to_time(dep_end)

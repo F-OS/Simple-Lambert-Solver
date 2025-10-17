@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Tuple, Dict
+import functools
+import logging
 from pathlib import Path
+from typing import Tuple, Dict
+
 import numpy as np
 import spiceypy as sp
-from astropy.time import Time
 from astropy import units as u
-import logging
+from astropy.time import Time
 
-from .types import Vec, State, TimeLike, KM, KMS, FRAME, CENTER, SUN_ID
 from .config import DEFAULT_KERNELS
+from .types import Vec, TimeLike, KM, KMS, FRAME, CENTER, SUN_ID
 
 # Global kernel management for multiprocessing
 _KERNEL_PATHS = []
@@ -35,6 +37,7 @@ def ensure_spice_loaded():
         _SPICE_READY = True
 
 
+@functools.cache
 def time_to_et(t: Time) -> float:
     """Convert astropy Time to SPICE ET using UTC string."""
     return sp.str2et(t.utc.isot)

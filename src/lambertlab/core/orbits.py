@@ -1,10 +1,10 @@
 """Orbital mechanics utilities."""
 
-import numpy as np
+
 # import pykep as pk
 
 
-def kepler_propagate(r0, v0, dt, mu):
+def kepler_propagate(r0, v0, dt):
     """Propagate state vector (r0, v0) by dt seconds under gravity mu.
 
     For small dt, approximate with linear motion.

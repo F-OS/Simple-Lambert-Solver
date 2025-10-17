@@ -6,10 +6,8 @@ Tests complete Earth-Mars-Ceres mission chains.
 Validates that PyKEP migration works for realistic 3-body problems.
 """
 
-import pytest
 import numpy as np
-from astropy import units as u
-from astropy.time import Time
+import pytest
 
 
 class TestTwoLegMissions:
@@ -27,7 +25,7 @@ class TestTwoLegMissions:
         
         # Should complete successfully (C3 values vary by opportunity)
         assert tof > 150, f"TOF {tof:.1f} days reasonable"
-        assert c3 > 0 and c3 < 1000, f"C3 {c3:.2f} km²/s² within physical bounds"
+        assert 0 < c3 < 1000, f"C3 {c3:.2f} km²/s² within physical bounds"
         assert 190 < tof < 210, f"TOF {tof:.1f} days unrealistic"
         
         print(f"✅ Porkchop point: {dep} → {arr}, C3={c3:.2f}km²/s²")
@@ -45,7 +43,7 @@ class TestTwoLegMissions:
         
         # Should complete successfully (C3 values vary widely by opportunity)
         assert tof > 150, f"TOF {tof:.1f} days needs sufficient duration"
-        assert c3 > 0 and c3 < 1000, f"C3 {c3:.2f} km²/s² within physical bounds"
+        assert 0 < c3 < 1000, f"C3 {c3:.2f} km²/s² within physical bounds"
         
         print(f"✅ Opposition class: TOF={tof:.1f}d, C3={c3:.2f}km²/s²")
 
@@ -66,7 +64,7 @@ class TestThreeBodyChains:
         vinf_mars_arrival = np.linalg.norm(vinf_arr)
         
         assert tof > 150, f"TOF {tof:.1f} days reasonable"
-        assert vinf_mars_arrival > 0 and vinf_mars_arrival < 50, \
+        assert 0 < vinf_mars_arrival < 50, \
             f"Leg 1 arrival v_inf {vinf_mars_arrival:.2f} km/s within physical bounds"
         
         print(f"✅ Leg 1 (E→M): C3={c3:.2f}, v∞_arrival={vinf_mars_arrival:.2f} km/s")
@@ -136,7 +134,7 @@ class TestThreeBodyChains:
         
         # Validate chain completes
         assert tof1 > 150, f"Leg 1 TOF {tof1:.1f} days reasonable"
-        assert c3_1 > 0 and c3_1 < 1000, f"Leg 1 C3 {c3_1:.2f} km²/s² within physical bounds"
+        assert 0 < c3_1 < 1000, f"Leg 1 C3 {c3_1:.2f} km²/s² within physical bounds"
         assert abs(np.linalg.norm(vinf_arr1) - np.linalg.norm(vinf_mars_out)) < 1e-6, \
             "Flyby must conserve v_inf magnitude"
         

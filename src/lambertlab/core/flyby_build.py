@@ -11,7 +11,6 @@ from .config import MU_MARS
 
 def _compute_delta_from_rp(vinf: float, rp_km: float, mu: float) -> float:
     """Compute turn angle delta from v_inf and periapsis radius."""
-    a = -mu / (vinf ** 2)  # semi-major axis (negative)
     e = 1 + rp_km * vinf**2 / mu  # eccentricity
     sin_half_delta = 1.0 / e
     if sin_half_delta > 1:
@@ -20,12 +19,11 @@ def _compute_delta_from_rp(vinf: float, rp_km: float, mu: float) -> float:
     return delta
 
 
-def build_outbound(v_sc_arr_helio: np.ndarray, v_mars_helio: np.ndarray, rp_km: float, theta_deg: float) -> tuple[np.ndarray, float]:
+def build_outbound(v_sc_arr_helio: np.ndarray, rp_km: float, theta_deg: float) -> tuple[np.ndarray, float]:
     """Build outbound heliocentric velocity after Mars flyby.
     
     Args:
         v_sc_arr_helio: Incoming spacecraft velocity vector (km/s) [3]
-        v_mars_helio: Mars velocity vector (km/s) [3]  
         rp_km: Periapsis radius (km)
         theta_deg: Rotation angle in B-plane (degrees)
         
@@ -84,7 +82,7 @@ def theta_sweep(v_sc_arr: np.ndarray, v_mars: np.ndarray, rp_km: float, vinf_req
     
     for theta_deg in theta_values:
         try:
-            v_out, _ = build_outbound(v_sc_arr, v_mars, rp_km, theta_deg)
+            v_out, _ = build_outbound(v_sc_arr, rp_km, theta_deg)
             ang_err = angle_between(v_out, vinf_req).to(units.deg).value
             if ang_err < best_ang_err:
                 best_ang_err = ang_err

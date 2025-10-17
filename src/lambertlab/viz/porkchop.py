@@ -4,20 +4,19 @@ Exposes a function `plot_porkchop` that accepts the departure times, TOF array,
 and C3 grid and saves a single-panel filled-contour image similar to the
 example style.
 """
-from typing import Sequence
-import sys
-
-import numpy as np
 import logging
+from typing import Sequence
+
 # Force matplotlib to use non-interactive backend for subprocess compatibility
 import matplotlib
+import numpy as np
+
 logger = logging.getLogger(__name__)
 logger.debug("porkchop import: matplotlib backend before use(): %s", matplotlib.get_backend())
 matplotlib.use('Agg', force=True)
 logger.debug("porkchop import: matplotlib backend after use('Agg'): %s", matplotlib.get_backend())
 import matplotlib.pyplot as plt
 logger.debug("porkchop import: matplotlib backend after pyplot import: %s", matplotlib.get_backend())
-from astropy import units as u
 from astropy.time import Time
 
 
@@ -92,7 +91,6 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
         logger.debug("plot_porkchop: Creating contourf")
         # Use a colormap for the valid range
         cmap_obj = plt.get_cmap(cmap)
-        cf = ax.contourf(X - jd_offset, Y, Z_display, levels=levels, cmap=cmap_obj, extend='both')
         logger.debug("plot_porkchop: Contourf created")
     except Exception:
         logger.exception("FATAL ERROR during matplotlib plotting")
@@ -115,7 +113,7 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
         # cbar.set_label('C3 (km$^2$/s$^2$)')
         logger.debug("plot_porkchop: Colorbar skipped")
         logger.debug("plot_porkchop: Colorbar added")
-    except Exception as e:
+    except Exception:
         logger.exception("FATAL ERROR adding colorbar")
         raise
 
@@ -138,11 +136,10 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
         tof_max = int(np.nanmax(tof_days))
         tof_levels = np.arange(tof_min, tof_max + 1, tof_contour_step)
         logger.debug("Creating contour lines")
-        cs = ax.contour(X - jd_offset, Y, TOF, levels=tof_levels, colors='k', linewidths=0.7)
         logger.debug("Skipping contour labels (matplotlib bug)")
         # ax.clabel(cs, fmt='%d d', inline=True, fontsize=8)  # Crashes in subprocess
         logger.debug("plot_porkchop: TOF contours added")
-    except Exception as e:
+    except Exception:
         logger.exception("FATAL ERROR adding TOF contours")
         raise
 
@@ -163,11 +160,10 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
             valley_tofs.append(tof_min_val)
             valley_arrs.append(arr_jd_val)
 
-        valley_tofs = np.array(valley_tofs)
         valley_arrs = np.array(valley_arrs)
         ax.plot(dep_jd - jd_offset, valley_arrs, color='white', linestyle='--', linewidth=1.5, marker='o', markersize=3, markerfacecolor='white', markeredgecolor='black')
         logger.debug("plot_porkchop: Valley plotted")
-    except Exception as e:
+    except Exception:
         logger.exception("FATAL ERROR plotting valley")
         raise
 
@@ -263,7 +259,7 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
             logger.debug('porkchop: Confirmed file exists, size: %s bytes', os.path.getsize(outname))
         else:
             logger.warning('porkchop: savefig returned but file does not exist!')
-    except Exception as e:
+    except Exception:
         plt.close(fig)
         logger.exception('ERROR porkchop: Failed to save plot')
         raise
@@ -286,7 +282,6 @@ def plot_rp_heatmap(dep_times: Sequence[Time], tof_days: np.ndarray, rp_grid: np
     dep_times = Time(dep_times)
     dep_jd = dep_times.tdb.jd
 
-    N = len(dep_jd)
     M = len(tof_days)
 
     # Arrival JD grid

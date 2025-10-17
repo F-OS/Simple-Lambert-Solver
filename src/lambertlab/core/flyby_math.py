@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 from astropy import units as units
-from astropy import constants as const
-from typing import Tuple
 
 
 def angle_between(u: np.ndarray, v: np.ndarray) -> units.Quantity[units.rad]:
@@ -118,8 +116,7 @@ def powered_delta_v(vinf_in_vec: np.ndarray, vinf_out_req_vec: np.ndarray, mu: f
     
     # Eccentricity for this orbit: e = 1 / sqrt(1 + (rp/a)^2 * (vinf^2/mu)^2)
     # But more simply: e = sqrt(1 - (rp/|a|))
-    e = np.sqrt(1 - (rp_min / abs(a)))
-    
+
     # Velocity at periapsis for incoming hyperbola
     # vp = sqrt( mu * (2/rp - 1/|a|) ) = sqrt( mu * (2/rp + 1/|a|) ) since a is negative
     vp_in = np.sqrt(mu * (2/rp_min + 1/abs(a)))

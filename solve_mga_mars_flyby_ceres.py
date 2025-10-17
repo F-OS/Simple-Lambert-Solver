@@ -23,9 +23,10 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
-import numpy as np
+from typing import Dict, List, Tuple
+
 import matplotlib.pyplot as plt
+import numpy as np
 from astropy.time import Time
 
 # Add src to path for imports
@@ -125,11 +126,12 @@ class MGAProblemWrapper:
             
             return [obj]
             
-        except Exception as e:
+        except Exception:
             # Return large penalty for invalid trajectories
             return [1e10]
     
-    def get_nobj(self):
+    @staticmethod
+    def get_nobj():
         """Return number of objectives (1)."""
         return 1
     
@@ -318,8 +320,7 @@ def decode_solution(
     t0 = x[0]  # MJD2000
     
     # Get bounds to help decode
-    bounds = mga_udp.get_bounds()
-    
+
     solution = {
         't0_mjd2000': t0,
         't0_utc': from_mjd2000(t0).iso,
@@ -383,8 +384,7 @@ def save_results(
 
 
 def plot_trajectory(
-    solution: Dict,
-    output_path: Path
+        output_path: Path
 ):
     """
     Plot heliocentric trajectory arcs.
@@ -573,7 +573,7 @@ def main():
     # Plot best solution
     if solutions:
         plot_path = output_dir / "best_trajectory.png"
-        plot_trajectory(solutions[0], plot_path)
+        plot_trajectory(plot_path)
     
     print(f"\n{'='*70}")
     print("OPTIMIZATION COMPLETE")

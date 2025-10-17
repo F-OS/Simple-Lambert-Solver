@@ -140,7 +140,7 @@ def find_flyby_lambert(
 
     # Compute B-plane coordinates for the refined solution
     b_vec = _compute_b_plane(
-        refined_candidate['rp'], refined_candidate['turn_angle'],
+        refined_candidate['turn_angle'],
         vinf_minus, v_inf_mag, mu_planet
     )
 
@@ -172,9 +172,9 @@ def _coarse_flyby_search(
     v_inf_mag = float(np.linalg.norm(vinf_minus))
 
     # Grid parameters
-    n_rp = min(20, max_samples // 10)
-    n_phi = min(36, max_samples // 5)
-    n_arr = min(30, max_samples // 10)
+    n_rp = max(20, max_samples // 10)
+    n_phi = max(36, max_samples // 5)
+    n_arr = max(30, max_samples // 10)
 
     rp_grid = np.linspace(rp_min, rp_max, n_rp)
     phi_grid = np.linspace(0.0, 2*np.pi, n_phi, endpoint=False)
@@ -296,8 +296,6 @@ def _refine_flyby_candidate(
                 mu_planet
             ))
 
-            vinf_out_planet = v_after - v_planet
-
             # Lambert to target at candidate arrival time
             r_target, v_target = rv_helio(target_body, candidate['arrival_epoch'])
             tof_td = candidate['arrival_epoch'] - epoch
@@ -317,7 +315,6 @@ def _refine_flyby_candidate(
             return 1e10  # Large penalty for invalid solutions
 
     # Initial parameters
-    x0 = [candidate['rp'], candidate['phi']]
 
     # Bounds for optimization
     bounds = [(300.0, 10000.0), (0.0, 2*np.pi)]
@@ -386,7 +383,7 @@ def _refine_flyby_candidate(
 
 
 def _compute_b_plane(
-    rp: float, turn_angle: float, vinf_minus: np.ndarray,
+        turn_angle: float, vinf_minus: np.ndarray,
     v_inf_mag: float, mu_planet: float
 ) -> np.ndarray:
     """
@@ -416,7 +413,8 @@ def _compute_b_plane(
 
 
 # Legacy function for backward compatibility
-def compute_flyby(epoch, r_planet, v_planet, mu_planet, vinf_in, rp_bounds, target_body, mu_central, search_arrival_window, max_samples, seed, min_alt_km=0.0, max_turn=None):
+"""?? Unused mu_central/seed???"""
+def compute_flyby(epoch, r_planet, v_planet, mu_planet, vinf_in, rp_bounds, target_body, mu_central , search_arrival_window, max_samples, seed, min_alt_km=0.0, max_turn=None):
     """
     Legacy flyby function for backward compatibility.
 
@@ -451,6 +449,6 @@ def compute_flyby(epoch, r_planet, v_planet, mu_planet, vinf_in, rp_bounds, targ
         b_vec=result.b_vec,
         vinf_out=result.vinf_out,
         arrival_epoch=result.arrival_epoch,
-        c3_to_ceres=result.c3_to_target,  # Map to old field name
+        c3_to_target=result.c3_to_target,  # Map to old field name
         flyby_model=result.flyby_model
     )

@@ -82,8 +82,7 @@ def eval_transfer_requirement(t_intermediate: str | Time, t_final: str | Time,
     from ..core.lambert_io import best_lambert_branch
     
     res = best_lambert_branch(
-        r_intermediate, v_intermediate, r_final, v_final, tof,
-        rtol=1e-10, prograde=None, lowpath=None
+        r_intermediate, v_intermediate, r_final, tof
     )
     
     if res is None:

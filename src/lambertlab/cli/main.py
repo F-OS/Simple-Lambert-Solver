@@ -1,9 +1,10 @@
 ﻿# cli/main.py
 # Set matplotlib backend before any imports to ensure it works in subprocess/headless mode
-import sys
-import os
 import logging
-import matplotlib
+import os
+
+from src.lambertlab.viz.ui import run_chain3, run_flyby, run_transfer_chain, run_transfer_grid, run_transfer_screen
+
 logger = logging.getLogger(__name__)
 logger.debug("MPLBACKEND env var = %s", os.environ.get('MPLBACKEND', 'NOT SET'))
 import matplotlib
@@ -12,7 +13,6 @@ logger.debug("Set matplotlib backend to: %s", matplotlib.get_backend())
 logging.basicConfig(level=logging.DEBUG)
 
 import argparse
-from ..viz.ui import run_transfer_grid, run_flyby, run_transfer_screen, run_transfer_chain, run_chain3
 
 def add_common(p):
     p.add_argument("--kernels", action="append", required=True)

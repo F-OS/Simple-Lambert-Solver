@@ -6,11 +6,11 @@ Large-scale tests to validate system performance and stability.
 Tests concurrent operations, large grids, edge cases.
 """
 
-import pytest
-import numpy as np
-from astropy import units as u
-from astropy.time import Time
 import time
+
+import numpy as np
+import pytest
+from astropy.time import Time
 
 
 class TestLargeGrids:

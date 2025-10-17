@@ -78,7 +78,7 @@ def validate_trajectory(em_row: dict, mc_row: dict) -> dict:
 
         # Use our kepler_propagate utility (r in km, v in km/s, dt in seconds)
         dt_to_ceres_s = (t_ceres.tdb - t_mars.tdb).to_value(units.s)
-        r_sc_ceres, _ = kepler_propagate(r_mars_vec, v_sc_dep_helio, dt_to_ceres_s, MU_SUN)
+        r_sc_ceres, _ = kepler_propagate(r_mars_vec, v_sc_dep_helio, dt_to_ceres_s)
 
         # Get Ceres position from SPICE
         et_ceres = spice.str2et(ceres_iso)
@@ -96,7 +96,7 @@ def validate_trajectory(em_row: dict, mc_row: dict) -> dict:
         min_distance_km = float('inf')
         for dt_s in dt_samples[1:-1]:  # Skip start and end points
             try:
-                r_sc_t, _ = kepler_propagate(r_mars_vec, v_sc_dep_helio, float(dt_s), MU_SUN)
+                r_sc_t, _ = kepler_propagate(r_mars_vec, v_sc_dep_helio, float(dt_s))
 
                 # Calculate time for SPICE
                 t_current = t_mars + (float(dt_s) * units.s)

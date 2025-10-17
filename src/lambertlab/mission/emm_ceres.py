@@ -7,15 +7,14 @@ lambertlab's SPICE ephemeris infrastructure for accurate planetary positions.
 All units are PyKEP-consistent: km, seconds, km/s, km³/s².
 """
 
-import pykep as pk
-from astropy.time import Time
-import numpy as np
-from typing import Tuple, List, Dict, Union
 import logging
+from typing import Tuple
+
+import numpy as np
+from astropy.time import Time
 
 # Import lambertlab SPICE infrastructure
-from ..core.spice_io import load_kernels, rv_helio_spice, ensure_spice_loaded
-from ..core.config import R_MARS, MU_MARS, MU_SUN
+from ..core.spice_io import rv_helio_spice, ensure_spice_loaded
 
 # NAIF ID mapping for common bodies
 NAIF_IDS = {
@@ -118,7 +117,7 @@ class SpicePlanet:
         r, v = rv_helio_spice(self.naif_id, epoch_time)
         
         # Return as tuples (PyKEP format)
-        return (tuple(float(x) for x in r), tuple(float(x) for x in v))
+        return tuple(float(x) for x in r), tuple(float(x) for x in v)
     
     def __repr__(self):
         return f"SpicePlanet({self.body_name}, NAIF ID: {self.naif_id})"

@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from typing import List, Tuple, Iterator
-import numpy as np
-from astropy.time import Time
-from astropy import units as u
+import logging
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
-import logging
+from typing import List, Tuple, Iterator
 
-from ..core.spice_io import load_kernels, rv_helio_spice, _to_time, StateCache, ensure_spice_loaded, _pool_initializer
-from ..core.lambert_io import best_lambert_branch, c3
-from ..core.config import AU
+import numpy as np
+from astropy import units as u
+from astropy.time import Time
+
+from ..core.lambert_io import best_lambert_branch
+from ..core.spice_io import rv_helio_spice, _to_time, StateCache, ensure_spice_loaded, _pool_initializer
 from ..core.types import EARTH_ID, MARS_ID
 
 
@@ -232,8 +232,7 @@ def compute_em_c3_tof_cached(
 
     # Try Lambert branches
     res = best_lambert_branch(
-        r_dep, v_dep_planet, r_arr, v_arr_planet, tof,
-        rtol=1e-10, prograde=prograde, lowpath=lowpath
+        r_dep, v_dep_planet, r_arr, tof
     )
     if res is None:
         raise RuntimeError(f"No Lambert solution found for {dep_body} to {arr_body} transfer from {dep_t.isot} to {arr_t.isot} (TOF: {tof.to_value(u.day):.1f} days)")
@@ -247,94 +246,13 @@ def compute_em_c3_tof_cached(
     tof_days = tof.to_value(u.day)
     return tof_days, float(min_C3), v_inf_dep, v_inf_arr, r_arr, v_arr_planet, used
 
-
-def compute_em_c3_tof(
-    dep_time: str | Time,
-    arr_time: str | Time,
-    dep_body: str = EARTH_ID,
-    arr_body: str = MARS_ID,
-    prograde: bool | None = None,
-    lowpath: bool | None = None,
-) -> Tuple[float, float, np.ndarray, np.ndarray, Tuple[int, bool, bool]]:
-    """
-    Compute (tof_days, C3, v_inf_dep, v_inf_arr, branch) for Earth-Mars pair.
-    """
-    dep_t = _to_time(dep_time)
-    arr_t = _to_time(arr_time)
-
-    if arr_t <= dep_t:
-        raise ValueError(f"Arrival time {arr_t.isot} must be after departure time {dep_t.isot}")
-
-    # Sun-centered states
-    r_dep, v_dep_planet = rv_helio_spice(dep_body, dep_t)
-    r_arr, v_arr_planet = rv_helio_spice(arr_body, arr_t)
-
-    # Time of flight
-    tof = (arr_t - dep_t)
-
-    # Try Lambert branches
-    res = best_lambert_branch(
-        r_dep, v_dep_planet, r_arr, v_arr_planet, tof,
-        rtol=1e-10, prograde=prograde, lowpath=lowpath
-    )
-    if res is None:
-        raise RuntimeError(f"No Lambert solution found for {dep_body} to {arr_body} transfer from {dep_t.isot} to {arr_t.isot} (TOF: {tof.to_value(u.day):.1f} days)")
-
-    min_C3, v_dep_best, v_arr_best, used = res
-
-    # v_inf relative to planets
-    v_inf_dep = v_dep_best - v_dep_planet
-    v_inf_arr = v_arr_best - v_arr_planet
-
-    tof_days = tof.to_value(u.day)
-    return tof_days, float(min_C3), v_inf_dep, v_inf_arr, used
-
-
-def screen_em_grid(
-    dep_start: str | Time,
-    dep_end: str | Time,
-    dep_step_days: int,
-    tof_min_days: int,
-    tof_max_days: int,
-    tof_step_days: int = 1,
-    dep_body: str = EARTH_ID,
-    arr_body: str = MARS_ID,
-) -> Tuple[List[Time], np.ndarray, np.ndarray]:
-    """
-    Screen Earth-Mars grid and return (dep_times, tof_days, c3_grid).
-    """
-    dep_start_t = _to_time(dep_start)
-    dep_end_t = _to_time(dep_end)
-
-    dep_times = Time(
-        np.arange(dep_start_t.jd, dep_end_t.jd + 1e-9, dep_step_days),
-        format='jd',
-        scale='tdb'
-    )
-    tof_days = np.arange(tof_min_days, tof_max_days + 1, tof_step_days)
-
-    c3_grid = np.full((len(dep_times), len(tof_days)), np.nan)
-
-    for i, dep in enumerate(dep_times):
-        for j, tof in enumerate(tof_days):
-            try:
-                arr = Time(dep.jd + tof, format='jd', scale='tdb')
-                _, c3_val, _, _, _ = compute_em_c3_tof(
-                    dep, arr, dep_body=dep_body, arr_body=arr_body
-                )
-                c3_grid[i, j] = c3_val
-            except Exception:
-                continue  # Leave as NaN
-
-    return dep_times, tof_days, c3_grid
-
-
 def screen_em_grid_cached(
     dep_start: str | Time,
     dep_end: str | Time,
     dep_step_days: int,
     tof_min_days: int,
     tof_max_days: int,
+    tof_step_days: int,
     dep_body: str = EARTH_ID,
     arr_body: str = MARS_ID,
     n_workers: int | None = None,
@@ -379,7 +297,7 @@ def screen_em_grid_cached(
         format='jd',
         scale='tdb'
     )
-    base_tof_days = np.arange(tof_min_days, tof_max_days + 1, 1)
+    base_tof_days = np.arange(tof_min_days, tof_max_days + 1, tof_step_days)
 
     if coarse_refine:
         # Run coarse grid first
@@ -450,111 +368,3 @@ def grid_em(dep_start, dep_end, dep_step_d, tof_min_d, tof_max_d, tof_step_d) ->
         for tof in tof_days:
             arr = Time(dep.jd + tof, format='jd', scale='tdb')
             yield dep, arr
-
-
-def eval_em_point(t_dep, t_mars) -> dict:
-    """Evaluate Earth-Mars point and return dict with C3_earth, tof1_d, etc."""
-    try:
-        tof_days, c3_val, v_inf_dep, v_inf_arr, used = compute_em_c3_tof(t_dep, t_mars)
-        vinf_kms = np.linalg.norm(v_inf_dep)
-        return {
-            'C3_earth': c3_val,
-            'tof1_d': tof_days,
-            'vinf_in_kms': vinf_kms,
-            'dep_iso': t_dep.isot,
-            'mars_iso': t_mars.isot
-        }
-    except ValueError as e:
-        logger = logging.getLogger(__name__)
-        logger.warning('Validation error for %s -> %s: %s', t_dep.isot, t_mars.isot, e)
-        return {
-            'C3_earth': np.nan,
-            'tof1_d': np.nan,
-            'vinf_in_kms': np.nan,
-            'dep_iso': t_dep.isot,
-            'mars_iso': t_mars.isot
-        }
-    except RuntimeError as e:
-        logger = logging.getLogger(__name__)
-        logger.exception('Computation error for %s -> %s: %s', t_dep.isot, t_mars.isot, e)
-        return {
-            'C3_earth': np.nan,
-            'tof1_d': np.nan,
-            'vinf_in_kms': np.nan,
-            'dep_iso': t_dep.isot,
-            'mars_iso': t_mars.isot
-        }
-    except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.exception('Unexpected error for %s -> %s: %s', t_dep.isot, t_mars.isot, e)
-        return {
-            'C3_earth': np.nan,
-            'tof1_d': np.nan,
-            'vinf_in_kms': np.nan,
-            'dep_iso': t_dep.isot,
-            'mars_iso': t_mars.isot
-        }
-
-
-def screen_em_grid_cached(dep_start, dep_end, dep_step_days, tof_min_days, tof_max_days, tof_step_days, dep_body, arr_body, n_workers):
-    """Screen Earth-Mars grid with caching."""
-    # Use the existing screen_em_grid function but extend it to include velocity data
-    dep_times, tof_days, c3_grid = screen_em_grid(
-        dep_start, dep_end, dep_step_days, tof_min_days, tof_max_days, tof_step_days, dep_body, arr_body
-    )
-    
-    N = len(dep_times)
-    M = len(tof_days)
-    
-    # Initialize arrays for velocity components
-    vinf_dep_x = np.zeros((N, M))
-    vinf_dep_y = np.zeros((N, M))
-    vinf_dep_z = np.zeros((N, M))
-    vinf_arr_x = np.zeros((N, M))
-    vinf_arr_y = np.zeros((N, M))
-    vinf_arr_z = np.zeros((N, M))
-    rM_x = np.zeros((N, M))
-    rM_y = np.zeros((N, M))
-    rM_z = np.zeros((N, M))
-    vM_x = np.zeros((N, M))
-    vM_y = np.zeros((N, M))
-    vM_z = np.zeros((N, M))
-    
-    # Create cache for velocity computations
-    from ..core.spice_io import StateCache
-    cache = StateCache()
-    
-    for i in range(N):
-        for j in range(M):
-            if not np.isfinite(c3_grid[i, j]):
-                continue
-            dep = dep_times[i]
-            arr = dep + tof_days[j] * u.day
-            try:
-                tof_days_val, c3_val, vinf_dep, vinf_arr, used = compute_em_c3_tof(
-                    dep, arr, dep_body=dep_body, arr_body=arr_body
-                )
-                # Get Mars state separately
-                r_arr, v_arr = rv_helio_spice(arr_body, arr)
-                vinf_dep_x[i, j] = vinf_dep[0]
-                vinf_dep_y[i, j] = vinf_dep[1]
-                vinf_dep_z[i, j] = vinf_dep[2]
-                vinf_arr_x[i, j] = vinf_arr[0]
-                vinf_arr_y[i, j] = vinf_arr[1]
-                vinf_arr_z[i, j] = vinf_arr[2]
-                rM_x[i, j] = r_arr[0]
-                rM_y[i, j] = r_arr[1]
-                rM_z[i, j] = r_arr[2]
-                vM_x[i, j] = v_arr[0]
-                vM_y[i, j] = v_arr[1]
-                vM_z[i, j] = v_arr[2]
-            except Exception:
-                continue
-    
-    return (
-        dep_times, tof_days, c3_grid,
-        vinf_dep_x, vinf_dep_y, vinf_dep_z,
-        vinf_arr_x, vinf_arr_y, vinf_arr_z,
-        rM_x, rM_y, rM_z,
-        vM_x, vM_y, vM_z
-    )

@@ -4,24 +4,25 @@ Checkpointed three-body chain computation with tiling.
 Provides resumable, crash-proof gravity assist trajectory search.
 """
 
+import logging
 import time
-import numpy as np
-import pykep as pk
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Dict, Any
+
+import numpy as np
 import pandas as pd
+import pykep as pk
 from astropy import units as u
 from astropy.time import Time
-import logging
 
 from ..core.checkpoint import (
-    Tile, TileResult, IndexDB, checkpoint_context,
+    Tile, TileResult, checkpoint_context,
     make_tile_id, atomic_write_csv, sha256_file, write_state
 )
-from ..core.spice_io import rv_helio_spice
+from ..core.config import MU_MARS
 from ..core.lambert_io import solve_leg
-from ..core.config import MU_SUN, MU_MARS, R_MARS
+from ..core.spice_io import rv_helio_spice
 from ..flows.em_only import screen_em_grid_cached
 
 
@@ -159,9 +160,7 @@ def process_chain3_tile(tile: Tile, config: Chain3Config, outdir: Path) -> TileR
         )
     
     # Extract tile slice
-    dep_slice = slice(dep_start_idx, dep_end_idx)
-    tof_slice = slice(tof_start_idx, tof_end_idx)
-    
+
     # Prepare grids for B-plane and Leg 2
     theta_grid = np.linspace(
         np.radians(config.bplane_theta_min_deg),

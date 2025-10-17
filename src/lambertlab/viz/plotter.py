@@ -6,12 +6,12 @@ example style.
 """
 from typing import Sequence
 
-import numpy as np
 # Force matplotlib to use non-interactive backend for subprocess compatibility
 import matplotlib
+import numpy as np
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from astropy import units as u
 from astropy.time import Time
 import logging
 
@@ -103,7 +103,6 @@ def plot_porkchop(dep_times: Sequence[Time], tof_days: np.ndarray, c3_grid: np.n
         valley_tofs.append(tof_min_val)
         valley_arrs.append(arr_jd_val)
 
-    valley_tofs = np.array(valley_tofs)
     valley_arrs = np.array(valley_arrs)
     ax.plot(dep_jd - jd_offset, valley_arrs, color='white', linestyle='--', linewidth=1.5, marker='o', markersize=3, markerfacecolor='white', markeredgecolor='black')
 

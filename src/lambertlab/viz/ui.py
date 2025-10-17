@@ -1,26 +1,26 @@
 # lambertlab/viz/ui.py
 """UI functions for lambertlab CLI commands."""
 
-import sys
 import csv
-import json
-import os
 import hashlib
+import json
+import logging
+import os
+import sys
+from pathlib import Path
+
 import numpy as np
 import pykep as pk
 from astropy import units as u
 from astropy.time import Time
-from pathlib import Path
-import logging
 
 logger = logging.getLogger(__name__)
 
 from ..core.spice_io import load_kernels, rv_helio_spice
-from ..flows.transfer_grid import screen_transfer_grid_cached, eval_transfer_point
-from ..flows.transfer_requirements import eval_transfer_requirement
+from ..flows.transfer_grid import screen_transfer_grid_cached
 from ..flows.flyby import compute_flyby
 from ..core.lambert_io import solve_leg
-from ..core.config import MU_SUN, MU_MARS, R_MARS
+from ..core.config import MU_MARS, R_MARS
 from ..viz.porkchop import plot_c3
 
 
@@ -328,21 +328,15 @@ def run_flyby(args):
         vinf_in, 
         (r_body + args.alt_min, r_body + 10000.0), 
         str(args.target_id),  # Target body for post-flyby trajectory
-        MU_SUN, 
-        (epoch + 200*u.day, epoch + 1000*u.day), 
-        max_samples=200, 
-        seed=args.seed
+        (epoch + 200*u.day, epoch + 1000*u.day),
+        max_samples=200
     )
     
     if not fly.success:
         logger = logging.getLogger(__name__)
         logger.error('No feasible flyby given min altitude %s km; try higher v∞ or lower alt.', args.alt_min)
         sys.exit(1)
-    
-    vinf_in_mag = np.linalg.norm(vinf_in)
-    turn_deg = np.degrees(fly.turn_angle) if fly.turn_angle is not None else None
-    rp_km = fly.rp if fly.rp is not None else None
-    
+
     # Guardrails: Compute array hash for reproducibility (on vinf_in vector)
     compute_array_hash(vinf_in, 'vinf_in')
     
@@ -565,14 +559,15 @@ def run_transfer_chain(args):
 
         # Determine b_hat
         if args.b_hat_mode == 'pro':
-            b_hat = np.array([0, 0, 1])
+            pass
         elif args.b_hat_mode == 'retro':
-            b_hat = np.array([0, 0, -1])
+            pass
         else:  # auto
-            b_hat = np.array([0, 0, 1])  # placeholder
+            pass
 
         # Run flyby (using Mars constants for now - should be made generic)
-        fly = compute_flyby(arr_epoch.tdb, rM, vM, MU_MARS, vinf_in, (R_MARS + args.min_alt, R_MARS + 10000.0), args.arr_body, MU_SUN, (arr_epoch + 200*u.day, arr_epoch + 1000*u.day), max_samples=200, seed=args.seed or 42)
+        fly = compute_flyby(arr_epoch.tdb, rM, vM, MU_MARS, vinf_in, (R_MARS + args.min_alt, R_MARS + 10000.0), args.arr_body,
+                            (arr_epoch + 200 * u.day, arr_epoch + 1000 * u.day), max_samples=200)
         if not fly.success:
             logger = logging.getLogger(__name__)
             logger.error('No feasible flyby given min altitude %s km; try higher v∞ or lower alt.', args.min_alt)
@@ -795,7 +790,7 @@ def run_chain3_original(args):
             leg1_tof_min, leg1_tof_max, leg1_tof_step,
             dep_body=str(args.dep_body), arr_body=str(args.flyby_body),
             n_workers=args.workers
-        )
+    )
     
     # Guardrails: Compute array hash for Leg 1
     compute_array_hash(c3_leg1, 'chain3_leg1_c3')
@@ -962,7 +957,7 @@ def run_chain3_original(args):
                                 'vinf_arr_kms': float(vinf_arr_mag)
                             })
                             
-                        except Exception as e:
+                        except Exception:
                             continue
     
     progress_bar(total_leg1, total_leg1, 'chain3')

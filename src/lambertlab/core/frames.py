@@ -1,7 +1,5 @@
 """Frame transformations."""
 
-import numpy as np
-
 
 def v_infinity(v_helio, v_planet):
     """Compute hyperbolic excess velocity in planet frame.
